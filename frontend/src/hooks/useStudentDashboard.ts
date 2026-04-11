@@ -8,6 +8,8 @@ interface Course {
   type: "live" | "recorded";
   duration: number;
   scheduledAt?: string;
+  createdAt?: string;
+  enrollmentCount?: number;
 }
 
 interface Enrollment {
@@ -22,7 +24,7 @@ interface UpcomingSession {
   id: string;
   title: string;
   scheduledAt: string;
-  courseId: string; 
+  courseId: string;
   duration: number;
 }
 

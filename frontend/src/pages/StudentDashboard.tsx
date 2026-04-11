@@ -7,7 +7,7 @@ import EmotionIndicator from '../components/EmotionIndicator';
 import {
   BookOpen, Video, Calendar, TrendingUp,
   Clock, Brain, Play, ExternalLink,
-  Search, X, ChevronLeft, ChevronRight,
+  Search, X, ChevronLeft, ChevronRight, Users,
 } from 'lucide-react';
 
 interface StudentDashboardProps {
@@ -166,6 +166,8 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
   // ── My Courses filter / search / pagination ──
   const [courseSearch, setCourseSearch] = useState('');
   const [courseTypeFilter, setCourseTypeFilter] = useState<'all' | 'live' | 'recorded'>('all');
+  const [progressFilter, setProgressFilter] = useState<'all' | 'not_started' | 'in_progress' | 'completed'>('all');
+  const [courseSortBy, setCourseSortBy] = useState<'newest' | 'oldest' | 'most_enrolled' | 'least_enrolled' | 'progress_high' | 'progress_low'>('newest');
   const [coursePage, setCoursePage] = useState(1);
   const COURSES_PER_PAGE = 4;
 
@@ -187,14 +189,41 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
 
   const { enrollments, stats, upcomingSessions } = data!;
 
-  const filteredEnrollments = enrollments.filter((e) => {
-    const matchesSearch =
-      e.course.title.toLowerCase().includes(courseSearch.toLowerCase()) ||
-      (e.course.description?.toLowerCase() ?? '').includes(courseSearch.toLowerCase());
-    const matchesType =
-      courseTypeFilter === 'all' || e.course.type === courseTypeFilter;
-    return matchesSearch && matchesType;
-  });
+  const filteredEnrollments = enrollments
+    .filter((e) => {
+      if (!e.course) return false; // skip orphaned enrollments (course deleted)
+      const matchesSearch =
+        e.course.title.toLowerCase().includes(courseSearch.toLowerCase()) ||
+        (e.course.description?.toLowerCase() ?? '').includes(courseSearch.toLowerCase());
+      const matchesType =
+        courseTypeFilter === 'all' || e.course.type === courseTypeFilter;
+      const matchesProgress =
+        progressFilter === 'all' ||
+        (e.course.type === 'live'
+          ? false  // live courses have no progress — hidden unless 'all'
+          : progressFilter === 'not_started'  ? e.progress === 0
+          : progressFilter === 'in_progress'  ? e.progress > 0 && e.progress < 100
+          : progressFilter === 'completed'    ? e.progress === 100
+          : true);
+      return matchesSearch && matchesType && matchesProgress;
+    })
+    .sort((a, b) => {
+      switch (courseSortBy) {
+        case 'oldest':
+          return new Date(a.course.createdAt ?? 0).getTime() - new Date(b.course.createdAt ?? 0).getTime();
+        case 'most_enrolled':
+          return (b.course.enrollmentCount ?? 0) - (a.course.enrollmentCount ?? 0);
+        case 'least_enrolled':
+          return (a.course.enrollmentCount ?? 0) - (b.course.enrollmentCount ?? 0);
+        case 'progress_high':
+          return b.progress - a.progress;
+        case 'progress_low':
+          return a.progress - b.progress;
+        case 'newest':
+        default:
+          return new Date(b.course.createdAt ?? 0).getTime() - new Date(a.course.createdAt ?? 0).getTime();
+      }
+    });
 
   const totalCoursePages = Math.ceil(filteredEnrollments.length / COURSES_PER_PAGE);
   const paginatedEnrollments = filteredEnrollments.slice(
@@ -269,8 +298,8 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
                 </button>
               </div>
 
-              {/* Search & Filter */}
-              <div className="flex flex-col sm:flex-row gap-2 mb-4">
+              {/* Row 1: Search + Type filter + Sort */}
+              <div className="flex flex-col sm:flex-row gap-2 mb-2">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
@@ -304,6 +333,41 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
                     </button>
                   ))}
                 </div>
+                <select
+                  value={courseSortBy}
+                  onChange={(e) => { setCourseSortBy(e.target.value as any); setCoursePage(1); }}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-xs font-medium text-gray-600 focus:ring-2 focus:ring-blue-500 outline-none bg-white cursor-pointer"
+                >
+                  <option value="newest">📅 Newest first</option>
+                  <option value="oldest">📅 Oldest first</option>
+                  <option value="most_enrolled">👥 Most enrolled</option>
+                  <option value="least_enrolled">👥 Least enrolled</option>
+                  <option value="progress_high">📈 Progress: High → Low</option>
+                  <option value="progress_low">📉 Progress: Low → High</option>
+                </select>
+              </div>
+
+              {/* Row 2: Progress filter pills */}
+              <div className="flex flex-wrap gap-1 mb-4">
+                <span className="text-xs text-gray-500 self-center mr-1">Progress:</span>
+                {([
+                  { value: 'all',          label: 'All',          color: 'blue'   },
+                  { value: 'not_started',  label: '⭕ Not started', color: 'gray'   },
+                  { value: 'in_progress',  label: '🔄 In progress', color: 'orange' },
+                  { value: 'completed',    label: '✅ Completed',   color: 'green'  },
+                ] as const).map(({ value, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => { setProgressFilter(value); setCoursePage(1); }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${
+                      progressFilter === value
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-gray-600 border-gray-300 hover:border-blue-300'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
 
               {/* Enrollment list */}
@@ -315,7 +379,7 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
                 <div className="text-center py-8">
                   <p className="text-gray-500 text-sm">No courses match your search.</p>
                   <button
-                    onClick={() => { setCourseSearch(''); setCourseTypeFilter('all'); }}
+                    onClick={() => { setCourseSearch(''); setCourseTypeFilter('all'); setProgressFilter('all'); setCourseSortBy('newest'); }}
                     className="mt-2 text-sm text-blue-600 hover:text-blue-700"
                   >
                     Clear filters
@@ -362,6 +426,18 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
                               {enrollment.course.duration}h
                             </span>
                             <span className="capitalize">{enrollment.course.type}</span>
+                            {enrollment.course.createdAt && (
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                {new Date(enrollment.course.createdAt).toLocaleDateString()}
+                              </span>
+                            )}
+                            {enrollment.course.enrollmentCount != null && (
+                              <span className="flex items-center gap-1">
+                                <Users className="w-3 h-3" />
+                                {enrollment.course.enrollmentCount} enrolled
+                              </span>
+                            )}
                           </div>
                         </div>
 

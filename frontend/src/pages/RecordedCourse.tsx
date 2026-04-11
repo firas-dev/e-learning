@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useLessons } from '../hooks/useLessons';
 import { useProgress } from '../hooks/useProgress';
+import { useLearningTimer } from '../hooks/useLearningTimer';
 import Navbar from '../components/Navbar';
 import EmotionIndicator from '../components/EmotionIndicator';
 import CameraConsentModal from '../components/CameraConsentModal';
@@ -12,6 +12,7 @@ import {
   Video, ArrowLeft, Link, Loader2,
   CheckCircle,
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 interface RecordedCourseProps {
   courseId: string;
@@ -19,36 +20,67 @@ interface RecordedCourseProps {
 }
 
 export default function RecordedCourse({ courseId, courseTitle }: RecordedCourseProps) {
-  const { user } = useAuth();
+  const { } = useAuth();
   const { setCurrentPage } = useNavigation();
   const { lessons, loading } = useLessons(courseId);
-  const { markLessonVisited } = useProgress(courseId, lessons.length);
+  const {
+    completedIds,
+    progressPercent,
+    hydrated,
+    getVideoTimeUpdateHandler,
+    forceCompleteLesson,
+  } = useProgress(courseId, lessons.length);
+
+  // ── Learning timer: ticks while in the window, pauses on leave ──────────
+  const { pause: pauseTimer, resume: resumeTimer } = useLearningTimer(courseId);
+
+  // ── Video ref for auto-pause on visibility change ────────────────────────
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Student left the tab → pause video + pause timer
+        videoRef.current?.pause();
+        pauseTimer();
+      } else {
+        // Student came back → resume timer (video stays paused — student decides)
+        resumeTimer();
+      }
+    };
+
+    const handleBlur = () => {
+      // Window lost focus (alt-tab, minimise) → pause video + timer
+      videoRef.current?.pause();
+      pauseTimer();
+    };
+
+    const handleFocus = () => resumeTimer();
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleBlur);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [pauseTimer, resumeTimer]);
 
   const [showConsentModal, setShowConsentModal] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(false);
-  const [currentEmotion, setCurrentEmotion] = useState<'engaged' | 'confused' | 'bored' | 'neutral'>('neutral');
+  const [currentEmotion] = useState<'engaged' | 'confused' | 'bored' | 'neutral'>('neutral');
   const [showResources, setShowResources] = useState(true);
   const [selectedLesson, setSelectedLesson] = useState<string | null>(null);
 
-  // ✅ Track which lessons have been visited (for UI checkmarks)
-  const [visitedIds, setVisitedIds] = useState<Set<string>>(new Set());
-
   const currentLesson = lessons.find((l) => l._id === selectedLesson) || lessons[0] || null;
 
-  // ✅ Mark first lesson as visited on mount
-  useEffect(() => {
-    if (lessons.length > 0 && lessons[0]) {
-      const firstId = lessons[0]._id;
-      markLessonVisited(firstId);
-      setVisitedIds((prev) => new Set(prev).add(firstId));
-    }
-  }, [lessons]);
+  // Derived helpers
+  const isVideo = (mimetype: string) =>
+    ['video/mp4', 'video/webm', 'video/ogg'].includes(mimetype);
 
-  const handleSelectLesson = (lessonId: string) => {
-    setSelectedLesson(lessonId);
-    markLessonVisited(lessonId);
-    setVisitedIds((prev) => new Set(prev).add(lessonId));
-  };
+  const videoFile = currentLesson?.files.find((f) => isVideo(f.mimetype));
 
   const getFileIcon = (mimetype: string) => {
     if (mimetype === 'text/uri-list') return <Link className="w-5 h-5 text-blue-600" />;
@@ -56,20 +88,21 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
     return <Video className="w-5 h-5 text-blue-600" />;
   };
 
-  const isVideo = (mimetype: string) =>
-    ['video/mp4', 'video/webm', 'video/ogg'].includes(mimetype);
-
   const formatSize = (bytes: number) =>
     bytes < 1024 * 1024
       ? `${(bytes / 1024).toFixed(1)} KB`
       : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
-  const videoFile = currentLesson?.files.find((f) => isVideo(f.mimetype));
+  const handleSelectLesson = (lessonId: string) => {
+    setSelectedLesson(lessonId);
 
-  // ✅ Progress percentage based on visited lessons
-  const progressPercent = lessons.length > 0
-    ? Math.round((visitedIds.size / lessons.length) * 100)
-    : 0;
+    // Auto-complete non-video lessons (PDFs, links) the moment the student opens them
+    const lesson = lessons.find((l) => l._id === lessonId);
+    const hasVideo = lesson?.files.some((f) => isVideo(f.mimetype));
+    if (!hasVideo) {
+      forceCompleteLesson(lessonId);
+    }
+  };
 
   if (loading) {
     return (
@@ -107,7 +140,7 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
             )}
           </div>
 
-          {/* ✅ Progress indicator in header */}
+          {/* Progress indicator in header */}
           {lessons.length > 0 && (
             <div className="text-right flex-shrink-0">
               <p className="text-sm font-semibold text-gray-900">{progressPercent}% complete</p>
@@ -135,10 +168,16 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                 <div className="relative aspect-video bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
                   {videoFile ? (
                     <video
+                      ref={videoRef}
                       key={videoFile.url}
                       src={videoFile.url}
                       controls
                       className="w-full h-full object-contain"
+                      onTimeUpdate={
+                        currentLesson
+                          ? getVideoTimeUpdateHandler(currentLesson._id)
+                          : undefined
+                      }
                     />
                   ) : (
                     <div className="text-center text-gray-500">
@@ -152,9 +191,8 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                       <Camera className="w-8 h-8 text-gray-400" />
                     </div>
                   )}
-
                   <div className="absolute bottom-4 right-4">
-                    {!cameraEnabled ? (
+                    {/*!cameraEnabled ? (
                       <button
                         onClick={() => setShowConsentModal(true)}
                         className="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-xs font-medium flex items-center gap-2 transition-colors"
@@ -170,11 +208,10 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                         <CameraOff className="w-4 h-4" />
                         Disable
                       </button>
-                    )}
+                    )*/}
                   </div>
                 </div>
               </div>
-
               {/* Emotion Timeline */}
               {cameraEnabled && (
                 <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
@@ -197,6 +234,24 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                   <div className="p-6">
                     <h3 className="text-lg font-bold text-gray-900 mb-2">About This Lesson</h3>
                     <p className="text-gray-600 leading-relaxed">{currentLesson.description}</p>
+                  </div>
+                )}
+
+                {/* Read-only completion status */}
+                {currentLesson && (
+                  <div className="px-6 pb-4 border-t border-gray-100 pt-4">
+                    {completedIds.has(currentLesson._id) ? (
+                      <div className="flex items-center gap-2 text-green-600 font-medium text-sm">
+                        <CheckCircle className="w-5 h-5" />
+                        Lesson completed!
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400">
+                        {videoFile
+                          ? 'Auto-completes after watching 90% of the video'
+                          : 'Will be marked complete once you open this lesson'}
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -254,12 +309,12 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
             {/* Right side panel */}
             <div className="space-y-6">
 
-              {/* ✅ Progress bar in sidebar */}
+              {/* Progress bar in sidebar */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                 <h3 className="text-lg font-bold text-gray-900 mb-3">Your Progress</h3>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-gray-600">
-                    {visitedIds.size} of {lessons.length} lessons
+                    {completedIds.size} of {lessons.length} lessons
                   </span>
                   <span className="text-sm font-bold text-blue-600">{progressPercent}%</span>
                 </div>
@@ -269,6 +324,11 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                     style={{ width: `${progressPercent}%` }}
                   />
                 </div>
+                {!hydrated && (
+                  <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Syncing progress…
+                  </p>
+                )}
                 {progressPercent === 100 && (
                   <div className="flex items-center gap-2 mt-3 text-green-600 text-sm font-medium">
                     <CheckCircle className="w-4 h-4" />
@@ -283,31 +343,29 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                 <div className="space-y-2">
                   {lessons.map((lesson, index) => {
                     const isCurrent = lesson._id === (currentLesson?._id);
-                    const isVisited = visitedIds.has(lesson._id);
+                    const isCompleted = completedIds.has(lesson._id);
                     return (
                       <div
                         key={lesson._id}
+                        id={`lesson-item-${lesson._id}`}
                         onClick={() => handleSelectLesson(lesson._id)}
-                        className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                          isCurrent
+                        className={`p-3 rounded-lg cursor-pointer transition-colors ${isCurrent
                             ? 'bg-blue-50 border-2 border-blue-500'
                             : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-2">
-                          {/* ✅ Checkmark if visited, number if not */}
-                          {isVisited ? (
+                          {/* Checkmark if completed, number if not */}
+                          {isCompleted ? (
                             <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
                           ) : (
-                            <span className={`text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
-                              isCurrent ? 'bg-blue-500 text-white' : 'bg-gray-300 text-gray-600'
-                            }`}>
+                            <span className={`text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${isCurrent ? 'bg-blue-500 text-white' : 'bg-gray-300 text-gray-600'
+                              }`}>
                               {index + 1}
                             </span>
                           )}
-                          <p className={`text-sm font-medium truncate ${
-                            isCurrent ? 'text-blue-900' : isVisited ? 'text-green-700' : 'text-gray-900'
-                          }`}>
+                          <p className={`text-sm font-medium truncate ${isCurrent ? 'text-blue-900' : isCompleted ? 'text-green-700' : 'text-gray-900'
+                            }`}>
                             {lesson.title}
                           </p>
                         </div>

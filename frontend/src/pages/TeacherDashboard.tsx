@@ -5,9 +5,9 @@ import Navbar from '../components/Navbar';
 import {
   TrendingUp, Users, Video, AlertCircle,
   Download, Calendar, Clock, Brain, Plus, X, Trash2,
+  Search, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 
-// ✅ type added to prop
 interface TeacherDashboardProps {
   onOpenCourse: (id: string, title: string, type: 'live' | 'recorded') => void;
 }
@@ -19,9 +19,10 @@ export default function TeacherDashboard({ onOpenCourse }: TeacherDashboardProps
     createCourse, deleteCourse, togglePublish,
     search, setSearch,
     typeFilter, setTypeFilter,
+    sortBy, setSortBy,
     page, setPage,
   } = useTeacherDashboard();
-  
+
   const { courses, totalStudents, averageEngagement, totalPages } = data;
 
   const [showModal, setShowModal] = useState(false);
@@ -244,8 +245,8 @@ export default function TeacherDashboard({ onOpenCourse }: TeacherDashboardProps
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
             <Video className="w-6 h-6 text-blue-600 mb-4" />
-            <p className="text-2xl font-bold">{courses.length}</p>
-            <p className="text-sm text-gray-600">Active Courses</p>
+            <p className="text-2xl font-bold">{data.total ?? courses.length}</p>
+            <p className="text-sm text-gray-600">Total Courses</p>
           </div>
           <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
             <Users className="w-6 h-6 text-green-600 mb-4" />
@@ -268,7 +269,9 @@ export default function TeacherDashboard({ onOpenCourse }: TeacherDashboardProps
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-              <div className="flex items-center justify-between mb-6">
+
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold">My Courses</h2>
                 <button
                   onClick={() => setShowModal(true)}
@@ -278,86 +281,183 @@ export default function TeacherDashboard({ onOpenCourse }: TeacherDashboardProps
                 </button>
               </div>
 
+              {/* ✅ Search & Filter & Sort */}
+              <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search courses..."
+                    className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                  {search && (
+                    <button
+                      onClick={() => setSearch('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2"
+                    >
+                      <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-1">
+                  {(['all', 'recorded', 'live'] as const).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setTypeFilter(t)}
+                      className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors border ${
+                        typeFilter === t
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-white text-gray-600 border-gray-300 hover:border-blue-300'
+                      }`}
+                    >
+                      {t === 'all' ? 'All' : t === 'live' ? '🔴 Live' : '▶ Recorded'}
+                    </button>
+                  ))}
+                </div>
+                {/* Sort dropdown */}
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-xs font-medium text-gray-600 focus:ring-2 focus:ring-blue-500 outline-none bg-white cursor-pointer"
+                >
+                  <option value="newest">📅 Newest first</option>
+                  <option value="oldest">📅 Oldest first</option>
+                  <option value="most_enrolled">👥 Most enrolled</option>
+                  <option value="least_enrolled">👥 Least enrolled</option>
+                </select>
+              </div>
+
+              {/* Course list */}
               {courses.length === 0 ? (
                 <div className="text-center py-12">
                   <Video className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500 mb-4">No courses created yet</p>
-                  <button
-                    onClick={() => setShowModal(true)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
-                  >
-                    Create your first course
-                  </button>
+                  {search || typeFilter !== 'all' ? (
+                    <>
+                      <p className="text-gray-500 mb-2">No courses match your search.</p>
+                      <button
+                        onClick={() => { setSearch(''); setTypeFilter('all'); }}
+                        className="text-sm text-blue-600 hover:text-blue-700"
+                      >
+                        Clear filters
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-gray-500 mb-4">No courses created yet</p>
+                      <button
+                        onClick={() => setShowModal(true)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
+                      >
+                        Create your first course
+                      </button>
+                    </>
+                  )}
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {courses.map((course) => (
-                    <div
-                      key={course._id}
-                      // ✅ passes type so App.tsx routes correctly
-                      onClick={() => onOpenCourse(String(course._id), course.title, course.type)}
-                      className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md transition-all cursor-pointer"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h3 className="font-semibold text-gray-900">{course.title}</h3>
-                            {/* ✅ Visual badge showing course type */}
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                              course.type === 'live'
-                                ? 'bg-red-100 text-red-600'
-                                : 'bg-blue-100 text-blue-600'
-                            }`}>
-                              {course.type === 'live' ? '🔴 Live' : '▶ Recorded'}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-                            <Users className="w-3 h-3" />
-                            <span>{course.enrollmentCount} student{course.enrollmentCount !== 1 ? 's' : ''} enrolled</span>
-                          </div>
-                          <p className="text-sm text-gray-600 mt-1">{course.description}</p>
-                          <div className="flex gap-4 text-xs text-gray-500 mt-3">
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />{course.duration}h
-                            </span>
-                            {course.scheduledAt && (
-                              <span className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
-                                {new Date(course.scheduledAt).toLocaleString()}
+                <>
+                  <div className="space-y-3">
+                    {courses.map((course) => (
+                      <div
+                        key={course._id}
+                        onClick={() => onOpenCourse(String(course._id), course.title, course.type)}
+                        className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-md transition-all cursor-pointer"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="font-semibold text-gray-900">{course.title}</h3>
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                course.type === 'live'
+                                  ? 'bg-red-100 text-red-600'
+                                  : 'bg-blue-100 text-blue-600'
+                              }`}>
+                                {course.type === 'live' ? '🔴 Live' : '▶ Recorded'}
                               </span>
-                            )}
+                            </div>
+                            <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                              <Users className="w-3 h-3" />
+                              <span>{course.enrollmentCount} student{course.enrollmentCount !== 1 ? 's' : ''} enrolled</span>
+                            </div>
+                            <p className="text-sm text-gray-600 mt-1 line-clamp-1">{course.description}</p>
+                            <div className="flex gap-4 text-xs text-gray-500 mt-2">
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />{course.duration}h
+                              </span>
+                              {course.createdAt && (
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  Posted {new Date(course.createdAt).toLocaleDateString()}
+                                </span>
+                              )}
+                              {course.scheduledAt && (
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  Scheduled {new Date(course.scheduledAt).toLocaleString()}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
 
-                        <div className="flex items-center gap-2 ml-4 flex-shrink-0">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              togglePublish(String(course._id));
-                            }}
-                            className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
-                              course.is_published
-                                ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                                : 'bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700'
-                            }`}
-                          >
-                            {course.is_published ? '✓ Published' : 'Publish'}
-                          </button>
-
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setConfirmDelete({ id: String(course._id), title: course.title });
-                            }}
-                            className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); togglePublish(String(course._id)); }}
+                              className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+                                course.is_published
+                                  ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                  : 'bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700'
+                              }`}
+                            >
+                              {course.is_published ? '✓ Published' : 'Publish'}
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setConfirmDelete({ id: String(course._id), title: course.title }); }}
+                              className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
+                    ))}
+                  </div>
+
+                  {/* ✅ Pagination */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-center gap-2 mt-4 pt-4 border-t border-gray-100">
+                      <button
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={page === 1}
+                        className="p-1.5 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <ChevronLeft className="w-4 h-4 text-gray-600" />
+                      </button>
+
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => setPage(p)}
+                          className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${
+                            p === page
+                              ? 'bg-blue-600 text-white'
+                              : 'border border-gray-300 text-gray-600 hover:bg-gray-100'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ))}
+
+                      <button
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={page === totalPages}
+                        className="p-1.5 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <ChevronRight className="w-4 h-4 text-gray-600" />
+                      </button>
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
             </div>
 

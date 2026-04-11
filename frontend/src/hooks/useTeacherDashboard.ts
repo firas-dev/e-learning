@@ -11,6 +11,7 @@ export interface Course {
   duration: number;
   type: "live" | "recorded";
   scheduledAt?: string;
+  createdAt?: string;
   enrollmentCount: number;
 }
 
@@ -32,25 +33,32 @@ export function useTeacherDashboard() {
     totalPages: 1,
     page: 1,
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);       // full-page – first fetch only
+  const [coursesLoading, setCoursesLoading] = useState(false); // course-list-only refetch
   const [error, setError] = useState("");
 
   // ✅ Filter / search / pagination state
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "live" | "recorded">("all");
+  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "most_enrolled" | "least_enrolled">("newest");
   const [page, setPage] = useState(1);
 
-  const fetchDashboard = async () => {
-    setLoading(true);
+  const fetchDashboard = async (isInitial = false) => {
+    if (isInitial) {
+      setLoading(true);
+    } else {
+      setCoursesLoading(true);
+    }
     try {
       const res = await axios.get(`${API}/teacher/dashboard`, {
-        params: { search, type: typeFilter, page, limit: 5 },
+        params: { search, type: typeFilter, sortBy, page, limit: 5 },
       });
       setData(res.data);
     } catch (err: any) {
       setError(err?.response?.data?.message || "Failed to load dashboard.");
     } finally {
       setLoading(false);
+      setCoursesLoading(false);
     }
   };
 
@@ -85,19 +93,29 @@ export function useTeacherDashboard() {
   };
 
   // Reset to page 1 when filters change
-  useEffect(() => { setPage(1); }, [search, typeFilter]);
+  useEffect(() => { setPage(1); }, [search, typeFilter, sortBy]);
 
-  useEffect(() => { fetchDashboard(); }, [search, typeFilter, page]);
+  // Initial load
+  useEffect(() => { fetchDashboard(true); }, []);
+
+  // Refetch when filters / sort / page change (skip the very first render)
+  const skipFirst = useState(true);
+  useEffect(() => {
+    if (skipFirst[0]) { skipFirst[1](false); return; }
+    fetchDashboard(false);
+  }, [search, typeFilter, sortBy, page]);
 
   return {
     data,
     loading,
+    coursesLoading,
     error,
     createCourse,
     deleteCourse,
     togglePublish,
     search, setSearch,
     typeFilter, setTypeFilter,
+    sortBy, setSortBy,
     page, setPage,
   };
 }
