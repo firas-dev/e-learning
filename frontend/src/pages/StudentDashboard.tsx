@@ -9,6 +9,7 @@ import {
   Clock, Brain, Play, ExternalLink,
   Search, X, ChevronLeft, ChevronRight, Users,
 } from 'lucide-react';
+import StarBadge from '../components/StarBadge';
 
 interface StudentDashboardProps {
   onOpenCourse: (id: string, title: string, type: 'live' | 'recorded') => void;
@@ -438,6 +439,7 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
                                 {enrollment.course.enrollmentCount} enrolled
                               </span>
                             )}
+                            <StarBadge average={enrollment.course.averageRating} />
                           </div>
                         </div>
 

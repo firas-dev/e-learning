@@ -7,6 +7,7 @@ import {
   Loader2, CheckCircle, User, Users,
   Search, ChevronLeft, ChevronRight, X,
 } from 'lucide-react';
+import StarBadge from '../components/StarBadge';
 
 export default function CourseCatalog() {
   const { setCurrentPage } = useNavigation();
@@ -158,6 +159,7 @@ export default function CourseCatalog() {
                             {new Date(course.scheduledAt).toLocaleDateString()}
                           </span>
                         )}
+                        <StarBadge average={course.averageRating} />
                       </div>
 
                       {/* Enroll / Unenroll */}

@@ -13,6 +13,7 @@ import liveSessionRoutes from "./routes/liveSessionRoutes";
 import { Server } from "socket.io";
 import { createServer } from "http";
 import enrollmentRoutes from "./routes/enrollmentRoutes";
+import feedbackRoutes from "./routes/feedbackRoutes";
 
 
 
@@ -70,7 +71,7 @@ app.use("/api/courses", lessonRoutes);
 app.use("/api/live", liveSessionRoutes);
 app.use("/api/enrollments", enrollmentRoutes);
 app.use("/api/notifications", notificationRoutes);
-
+app.use("/api/courses", feedbackRoutes);
 
 
 // Test route

@@ -11,8 +11,11 @@ import {
   Download, ChevronDown, ChevronUp,
   Video, ArrowLeft, Link, Loader2,
   CheckCircle,
+  Star,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import CommentsAndRating, { CourseRatingInline } from '../components/CommentsAndRating';
+
 
 interface RecordedCourseProps {
   courseId: string;
@@ -230,12 +233,23 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
 
               {/* About + Resources */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-                {currentLesson?.description && (
-                  <div className="p-6">
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">About This Lesson</h3>
-                    <p className="text-gray-600 leading-relaxed">{currentLesson.description}</p>
-                  </div>
-                )}
+              {currentLesson?.description && (
+            <div className="p-6">
+              <div className="flex items-start justify-between gap-6 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-lg font-bold text-gray-900 mb-2">About This Lesson</h3>
+                  <p className="text-gray-600 leading-relaxed">{currentLesson.description}</p>
+                </div>
+                {/* ── Rating sits to the right of the description ── */}
+                <div className="flex-shrink-0 border-l border-gray-100 pl-6">
+                  <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1">
+                    <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" /> Course Rating
+                  </p>
+                  <CourseRatingInline courseId={courseId} />
+                </div>
+              </div>
+            </div>
+          )}
 
                 {/* Read-only completion status */}
                 {currentLesson && (
@@ -273,7 +287,7 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                       : <ChevronDown className="w-5 h-5 text-gray-400" />
                     }
                   </button>
-
+                  
                   {showResources && currentLesson && (
                     <div className="mt-4 space-y-3">
                       {currentLesson.files.length === 0 ? (
@@ -303,6 +317,7 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                     </div>
                   )}
                 </div>
+                <CommentsAndRating courseId={courseId} lessonId={currentLesson?._id} />
               </div>
             </div>
 

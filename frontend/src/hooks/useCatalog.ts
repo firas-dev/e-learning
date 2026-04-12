@@ -12,6 +12,7 @@ export interface CatalogCourse {
   scheduledAt?: string;
   teacherId: { _id: string; fullName: string };
   enrollmentCount: number;
+  averageRating: number;
 }
 
 export function useCatalog() {
