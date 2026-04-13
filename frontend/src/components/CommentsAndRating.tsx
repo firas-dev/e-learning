@@ -123,9 +123,10 @@ export function LessonRatingWidget({ courseId, lessonId, onCourseUpdate }: Lesso
 interface CommentsProps {
   courseId: string;
   lessonId?: string;
+  onCourseRatingUpdate?: (avg: number, cnt: number) => void;
 }
 
-export default function CommentsAndRating({ courseId, lessonId }: CommentsProps) {
+export default function CommentsAndRating({ courseId, lessonId, onCourseRatingUpdate }: CommentsProps) {
   const { user } = useAuth();
   const { comments, loading: commentsLoading, addComment, deleteComment } = useComments(courseId, lessonId);
 

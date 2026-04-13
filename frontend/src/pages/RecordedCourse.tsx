@@ -26,6 +26,8 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
   const { } = useAuth();
   const { setCurrentPage } = useNavigation();
   const { lessons, loading } = useLessons(courseId);
+  const [courseRatingAvg, setCourseRatingAvg] = useState<number | undefined>(undefined);
+  const [courseRatingCount, setCourseRatingCount] = useState<number | undefined>(undefined);
   const {
     completedIds,
     progressPercent,
@@ -142,7 +144,7 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                 <div className="flex items-center gap-1.5 bg-white border border-gray-200 shadow-sm px-3 py-1.5 rounded-lg">
                   <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
                   <span className="text-xs text-gray-500 font-medium">Course avg</span>
-                  <CourseRatingInline courseId={courseId} />
+                  <CourseRatingInline courseId={courseId} externalAverage={courseRatingAvg} externalCount={courseRatingCount} />
                 </div>
           </div>
          
@@ -241,10 +243,16 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                         <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1">
                           <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" /> Rate this lesson
                         </p>
-                        <LessonRatingWidget
-                          courseId={courseId}
-                          lessonId={currentLesson._id}
-                        />
+                        {currentLesson && (
+                          <LessonRatingWidget
+                            courseId={courseId}
+                            lessonId={currentLesson._id}
+                            onCourseUpdate={(avg, cnt) => {
+                              setCourseRatingAvg(avg);
+                              setCourseRatingCount(cnt);
+                            }}
+                          />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -316,7 +324,7 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                     </div>
                   )}
                 </div>
-                <CommentsAndRating courseId={courseId} lessonId={currentLesson?._id} />
+                <CommentsAndRating courseId={courseId} lessonId={currentLesson?._id} onCourseRatingUpdate={(avg, cnt) => {setCourseRatingAvg(avg); setCourseRatingCount(cnt); }} />
               </div>
             </div>
 

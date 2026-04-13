@@ -31,15 +31,15 @@ export function useLessonRating(courseId: string, lessonId: string) {
     }, [courseId, lessonId]);  // lessonId in deps ensures refetch on lesson change
   
     const submitRating = async (stars: number) => {
-      const res = await axios.post(
-        `${API}/courses/${courseId}/ratings/lesson/${lessonId}`,
-        { stars }
-      );
-      setAverage(res.data.lessonAverage);
-      setCount(res.data.lessonCount);
-      setMyStars(res.data.myStars);
-      return { courseAverage: res.data.courseAverage, courseCount: res.data.courseCount };
-    };
+        const res = await axios.post(
+          `${API}/courses/${courseId}/ratings/lesson/${lessonId}`,
+          { stars }
+        );
+        setAverage(res.data.lessonAverage);
+        setCount(res.data.lessonCount);
+        setMyStars(res.data.myStars);   // null if toggled off
+        return { courseAverage: res.data.courseAverage, courseCount: res.data.courseCount };
+      };
   
     return { average, count, myStars, loading, submitRating };
 }
