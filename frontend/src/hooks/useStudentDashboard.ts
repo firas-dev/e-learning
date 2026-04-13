@@ -10,6 +10,7 @@ interface Course {
   scheduledAt?: string;
   createdAt?: string;
   enrollmentCount?: number;
+  averageRating: number;
 }
 
 interface Enrollment {

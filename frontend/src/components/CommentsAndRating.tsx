@@ -82,40 +82,29 @@ interface LessonRatingProps {
 }
 
 export function LessonRatingWidget({ courseId, lessonId, onCourseUpdate }: LessonRatingProps) {
-  const { user } = useAuth();
-  const { average, count, myStars, loading, submitRating } = useLessonRating(courseId, lessonId);
-  const [submitting, setSubmitting] = useState(false);
-
-  if (user?.role !== 'student') return null;
-
-  const handleRate = async (stars: number) => {
-    if (submitting) return;
+    const { user } = useAuth();
+    const { average, count, myStars, loading, submitRating } = useLessonRating(courseId, lessonId);
+    const [submitting, setSubmitting] = useState(false);
   
-    setSubmitting(true);
-    try {
-      const result = await submitRating(stars);
-      onCourseUpdate?.(result.courseAverage, result.courseCount);
-    } catch (e) {
-      console.error(e); // IMPORTANT
-    } finally {
-      setSubmitting(false); // must always run
-    }
-  };
-
-  if (loading) return null;
-
+    if (!lessonId) return null;           
+    if (user?.role !== 'student') return null;
+  
+    const handleRate = async (stars: number) => {
+      if (submitting) return;
+      setSubmitting(true);
+      try {
+        const result = await submitRating(stars);
+        onCourseUpdate?.(result.courseAverage, result.courseCount);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setSubmitting(false);
+      }
+    };
+  
+    if (loading) return <div className="h-10 bg-gray-100 rounded-xl animate-pulse" />;  
   return (
     <div className="flex items-center gap-4 py-3 px-4 bg-yellow-50 border border-yellow-100 rounded-xl">
-      {/* Lesson average (read-only) */}
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <StarRow value={Math.round(average)} size="sm" />
-        <span className="text-xs text-gray-500">
-          {count === 0 ? 'No ratings' : `${average.toFixed(1)} (${count})`}
-        </span>
-      </div>
-
-      <div className="h-6 w-px bg-yellow-200 hidden sm:block" />
-
       {/* Interactive input */}
       <div className={`flex items-center gap-2 ${submitting ? 'opacity-50 pointer-events-none' : ''}`}>
         <span className="text-xs font-medium text-gray-600 whitespace-nowrap">

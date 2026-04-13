@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import Enrollment from "../models/Enrollment";
 import Course from "../models/Course";
 import Lesson from "../models/Lesson";
+import Rating from "../models/Rating";
 
 // ─── GET /dashboard ───────────────────────────────────────────────────────────
 export const getStudentDashboard = async (req: Request, res: Response) => {
@@ -16,12 +17,22 @@ export const getStudentDashboard = async (req: Request, res: Response) => {
     const enrollmentsWithCount = await Promise.all(
       enrollments.map(async (e) => {
         const course = e.courseId as any;
-        const enrollmentCount = course
-          ? await Enrollment.countDocuments({ courseId: course._id })
-          : 0;
-        return { enrollment: e, enrollmentCount };
+        const [enrollmentCount, averageRating] = course
+          ? await Promise.all([
+              Enrollment.countDocuments({ courseId: course._id }),
+              Rating.find({ courseId: course._id }).then((ratings) =>
+                ratings.length === 0
+                  ? 0
+                  : Math.round(
+                      (ratings.reduce((s, r) => s + r.stars, 0) / ratings.length) * 10
+                    ) / 10
+              ),
+            ])
+          : [0, 0];
+        return { enrollment: e, enrollmentCount, averageRating };
       })
     );
+    
 
     const totalLearningTime = enrollments.reduce(
       (acc, e) => acc + e.learningTime,
@@ -49,7 +60,7 @@ export const getStudentDashboard = async (req: Request, res: Response) => {
     res.json({
       enrollments: enrollmentsWithCount
         .filter(({ enrollment: e }) => e.courseId != null)  // skip deleted courses
-        .map(({ enrollment: e, enrollmentCount }) => {
+        .map(({ enrollment: e, enrollmentCount , averageRating }) => {
           const course = e.courseId as any;
           return {
             id: e._id,
@@ -58,7 +69,7 @@ export const getStudentDashboard = async (req: Request, res: Response) => {
             learningTime: e.learningTime,
             completedLessons: e.completedLessons,
             course: course
-              ? { ...course.toObject(), enrollmentCount }
+              ? { ...course.toObject(), enrollmentCount , averageRating }
               : course,
           };
         }

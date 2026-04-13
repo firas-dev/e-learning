@@ -106,47 +106,54 @@ router.get("/:courseId/ratings/lesson/:lessonId", protect, async (req, res) => {
 
 // POST /api/courses/:courseId/ratings/lesson/:lessonId  (upsert)
 router.post("/:courseId/ratings/lesson/:lessonId", protect, async (req, res) => {
-  try {
-    const user = (req as any).user;
-    const { stars } = req.body;
-    if (!stars || stars < 1 || stars > 5)
-      return res.status(400).json({ message: "Stars must be 1-5" });
-
-    const studentName = await getFullName(user.id);
-
-    await Rating.findOneAndUpdate(
-      { courseId: req.params.courseId, lessonId: req.params.lessonId, studentId: user.id },
-      {
+    try {
+      const user = (req as any).user;
+      const { stars } = req.body;
+      if (!stars || stars < 1 || stars > 5)
+        return res.status(400).json({ message: "Stars must be 1-5" });
+  
+      const studentName = await getFullName(user.id);
+  
+      // Use updateOne with upsert instead of findOneAndUpdate
+      await Rating.updateOne(
+        { 
+          courseId: req.params.courseId, 
+          lessonId: req.params.lessonId, 
+          studentId: user.id 
+        },
+        {
+          $set: {
+            courseId: req.params.courseId,
+            lessonId: req.params.lessonId,
+            studentId: user.id,
+            studentName,
+            stars,
+          },
+        },
+        { upsert: true }
+      );
+  
+      // Return updated lesson stats
+      const lessonRatings = await Rating.find({
         courseId: req.params.courseId,
         lessonId: req.params.lessonId,
-        studentId: user.id,
-        studentName,
-        stars,
-      },
-      { new: true, upsert: true }
-    );
-
-    // Return updated lesson stats
-    const lessonRatings = await Rating.find({
-      courseId: req.params.courseId,
-      lessonId: req.params.lessonId,
-    });
-    const lessonAvg = lessonRatings.reduce((s, r) => s + r.stars, 0) / lessonRatings.length;
-
-    // Return updated course average too
-    const allRatings = await Rating.find({ courseId: req.params.courseId });
-    const courseAvg = allRatings.reduce((s, r) => s + r.stars, 0) / allRatings.length;
-
-    res.json({
-      lessonAverage: Math.round(lessonAvg * 10) / 10,
-      lessonCount: lessonRatings.length,
-      myStars: stars,
-      courseAverage: Math.round(courseAvg * 10) / 10,
-      courseCount: allRatings.length,
-    });
-  } catch (err: any) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
+      });
+      const lessonAvg = lessonRatings.reduce((s, r) => s + r.stars, 0) / lessonRatings.length;
+  
+      // Return updated course average too
+      const allRatings = await Rating.find({ courseId: req.params.courseId });
+      const courseAvg = allRatings.reduce((s, r) => s + r.stars, 0) / allRatings.length;
+  
+      res.json({
+        lessonAverage: Math.round(lessonAvg * 10) / 10,
+        lessonCount: lessonRatings.length,
+        myStars: stars,
+        courseAverage: Math.round(courseAvg * 10) / 10,
+        courseCount: allRatings.length,
+      });
+    } catch (err: any) {
+      console.error("Rating error:", err); // this will show the real error in terminal
+      res.status(500).json({ message: err.message });
+    }
+  });
 export default router;

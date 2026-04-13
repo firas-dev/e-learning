@@ -14,7 +14,7 @@ import {
   Star,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import CommentsAndRating, { CourseRatingInline } from '../components/CommentsAndRating';
+import CommentsAndRating, { CourseRatingInline , LessonRatingWidget } from '../components/CommentsAndRating';
 
 
 interface RecordedCourseProps {
@@ -43,17 +43,14 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        // Student left the tab → pause video + pause timer
         videoRef.current?.pause();
         pauseTimer();
       } else {
-        // Student came back → resume timer (video stays paused — student decides)
         resumeTimer();
       }
     };
 
     const handleBlur = () => {
-      // Window lost focus (alt-tab, minimise) → pause video + timer
       videoRef.current?.pause();
       pauseTimer();
     };
@@ -99,7 +96,6 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
   const handleSelectLesson = (lessonId: string) => {
     setSelectedLesson(lessonId);
 
-    // Auto-complete non-video lessons (PDFs, links) the moment the student opens them
     const lesson = lessons.find((l) => l._id === lessonId);
     const hasVideo = lesson?.files.some((f) => isVideo(f.mimetype));
     if (!hasVideo) {
@@ -142,19 +138,14 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
               <p className="text-gray-600 mt-1">{currentLesson.title}</p>
             )}
           </div>
-
-          {/* Progress indicator in header */}
-          {lessons.length > 0 && (
-            <div className="text-right flex-shrink-0">
-              <p className="text-sm font-semibold text-gray-900">{progressPercent}% complete</p>
-              <div className="w-32 h-2 bg-gray-200 rounded-full mt-1 overflow-hidden">
-                <div
-                  className="h-full bg-blue-600 rounded-full transition-all duration-500"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-            </div>
-          )}
+          <div className="flex justify-end">
+                <div className="flex items-center gap-1.5 bg-white border border-gray-200 shadow-sm px-3 py-1.5 rounded-lg">
+                  <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
+                  <span className="text-xs text-gray-500 font-medium">Course avg</span>
+                  <CourseRatingInline courseId={courseId} />
+                </div>
+          </div>
+         
         </div>
 
         {lessons.length === 0 ? (
@@ -194,6 +185,7 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                       <Camera className="w-8 h-8 text-gray-400" />
                     </div>
                   )}
+
                   <div className="absolute bottom-4 right-4">
                     {/*!cameraEnabled ? (
                       <button
@@ -215,6 +207,10 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                   </div>
                 </div>
               </div>
+
+              {/* Course avg rating — below video, top-right */}
+              
+
               {/* Emotion Timeline */}
               {cameraEnabled && (
                 <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
@@ -233,23 +229,26 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
 
               {/* About + Resources */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-              {currentLesson?.description && (
-            <div className="p-6">
-              <div className="flex items-start justify-between gap-6 flex-wrap">
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-lg font-bold text-gray-900 mb-2">About This Lesson</h3>
-                  <p className="text-gray-600 leading-relaxed">{currentLesson.description}</p>
-                </div>
-                {/* ── Rating sits to the right of the description ── */}
-                <div className="flex-shrink-0 border-l border-gray-100 pl-6">
-                  <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1">
-                    <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" /> Course Rating
-                  </p>
-                  <CourseRatingInline courseId={courseId} />
-                </div>
-              </div>
-            </div>
-          )}
+                {currentLesson?.description && (
+                  <div className="p-6">
+                    <div className="flex items-start justify-between gap-6 flex-wrap">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-lg font-bold text-gray-900 mb-2">About This Lesson</h3>
+                        <p className="text-gray-600 leading-relaxed">{currentLesson.description}</p>
+                      </div>
+                      {/* Lesson rating only — course avg moved to header */}
+                      <div className="flex-shrink-0 border-l border-gray-100 pl-9">
+                        <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1">
+                          <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" /> Rate this lesson
+                        </p>
+                        <LessonRatingWidget
+                          courseId={courseId}
+                          lessonId={currentLesson._id}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Read-only completion status */}
                 {currentLesson && (
@@ -287,7 +286,7 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                       : <ChevronDown className="w-5 h-5 text-gray-400" />
                     }
                   </button>
-                  
+
                   {showResources && currentLesson && (
                     <div className="mt-4 space-y-3">
                       {currentLesson.files.length === 0 ? (
@@ -370,7 +369,6 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                           }`}
                       >
                         <div className="flex items-center gap-2">
-                          {/* Checkmark if completed, number if not */}
                           {isCompleted ? (
                             <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
                           ) : (

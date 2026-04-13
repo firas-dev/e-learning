@@ -168,8 +168,9 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
   const [courseSearch, setCourseSearch] = useState('');
   const [courseTypeFilter, setCourseTypeFilter] = useState<'all' | 'live' | 'recorded'>('all');
   const [progressFilter, setProgressFilter] = useState<'all' | 'not_started' | 'in_progress' | 'completed'>('all');
-  const [courseSortBy, setCourseSortBy] = useState<'newest' | 'oldest' | 'most_enrolled' | 'least_enrolled' | 'progress_high' | 'progress_low'>('newest');
+  const [courseSortBy, setCourseSortBy] = useState<'newest' | 'oldest' | 'rating_high' | 'rating_low' | 'progress_high' | 'progress_low'>('newest');
   const [coursePage, setCoursePage] = useState(1);
+  const [justCleared, setJustCleared] = useState(false);
   const COURSES_PER_PAGE = 4;
 
   if (loading) {
@@ -192,7 +193,7 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
 
   const filteredEnrollments = enrollments
     .filter((e) => {
-      if (!e.course) return false; // skip orphaned enrollments (course deleted)
+      if (!e.course) return false;
       const matchesSearch =
         e.course.title.toLowerCase().includes(courseSearch.toLowerCase()) ||
         (e.course.description?.toLowerCase() ?? '').includes(courseSearch.toLowerCase());
@@ -201,7 +202,7 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
       const matchesProgress =
         progressFilter === 'all' ||
         (e.course.type === 'live'
-          ? false  // live courses have no progress — hidden unless 'all'
+          ? false
           : progressFilter === 'not_started'  ? e.progress === 0
           : progressFilter === 'in_progress'  ? e.progress > 0 && e.progress < 100
           : progressFilter === 'completed'    ? e.progress === 100
@@ -212,10 +213,10 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
       switch (courseSortBy) {
         case 'oldest':
           return new Date(a.course.createdAt ?? 0).getTime() - new Date(b.course.createdAt ?? 0).getTime();
-        case 'most_enrolled':
-          return (b.course.enrollmentCount ?? 0) - (a.course.enrollmentCount ?? 0);
-        case 'least_enrolled':
-          return (a.course.enrollmentCount ?? 0) - (b.course.enrollmentCount ?? 0);
+        case 'rating_high':
+          return (b.course.averageRating ?? 0) - (a.course.averageRating ?? 0);
+        case 'rating_low':
+          return (a.course.averageRating ?? 0) - (b.course.averageRating ?? 0);
         case 'progress_high':
           return b.progress - a.progress;
         case 'progress_low':
@@ -299,76 +300,124 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
                 </button>
               </div>
 
-              {/* Row 1: Search + Type filter + Sort */}
-              <div className="flex flex-col sm:flex-row gap-2 mb-2">
-                <div className="relative flex-1">
+              {/* Filters */}
+              <div className="mb-5 space-y-3">
+
+                {/* Row 1 — Search */}
+                <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
                     value={courseSearch}
                     onChange={(e) => { setCourseSearch(e.target.value); setCoursePage(1); }}
-                    placeholder="Search my courses..."
-                    className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Search courses..."
+                    className="w-full pl-9 pr-9 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-700 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all"
                   />
                   {courseSearch && (
-                    <button
-                      onClick={() => { setCourseSearch(''); setCoursePage(1); }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2"
-                    >
+                    <button onClick={() => { setCourseSearch(''); setCoursePage(1); }} className="absolute right-3 top-1/2 -translate-y-1/2">
                       <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
                     </button>
                   )}
                 </div>
-                <div className="flex gap-1">
-                  {(['all', 'recorded', 'live'] as const).map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => { setCourseTypeFilter(t); setCoursePage(1); }}
-                      className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors border ${
-                        courseTypeFilter === t
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white text-gray-600 border-gray-300 hover:border-blue-300'
-                      }`}
-                    >
-                      {t === 'all' ? 'All' : t === 'live' ? '🔴 Live' : '▶ Recorded'}
-                    </button>
-                  ))}
-                </div>
-                <select
-                  value={courseSortBy}
-                  onChange={(e) => { setCourseSortBy(e.target.value as any); setCoursePage(1); }}
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-xs font-medium text-gray-600 focus:ring-2 focus:ring-blue-500 outline-none bg-white cursor-pointer"
-                >
-                  <option value="newest">📅 Newest first</option>
-                  <option value="oldest">📅 Oldest first</option>
-                  <option value="most_enrolled">👥 Most enrolled</option>
-                  <option value="least_enrolled">👥 Least enrolled</option>
-                  <option value="progress_high">📈 Progress: High → Low</option>
-                  <option value="progress_low">📉 Progress: Low → High</option>
-                </select>
-              </div>
 
-              {/* Row 2: Progress filter pills */}
-              <div className="flex flex-wrap gap-1 mb-4">
-                <span className="text-xs text-gray-500 self-center mr-1">Progress:</span>
-                {([
-                  { value: 'all',          label: 'All',          color: 'blue'   },
-                  { value: 'not_started',  label: '⭕ Not started', color: 'gray'   },
-                  { value: 'in_progress',  label: '🔄 In progress', color: 'orange' },
-                  { value: 'completed',    label: '✅ Completed',   color: 'green'  },
-                ] as const).map(({ value, label }) => (
+                {/* Row 2 — Filter groups + Clear */}
+                <div className="flex flex-wrap items-center gap-3">
+
+                  {/* Type */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Type</span>
+                    <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
+                      {([
+                        { value: 'all',      label: 'All'       },
+                        { value: 'recorded', label: '▶ Recorded' },
+                        { value: 'live',     label: '🔴 Live'   },
+                      ] as const).map(({ value, label }) => (
+                        <button
+                          key={value}
+                          onClick={() => { setCourseTypeFilter(value); setCoursePage(1); }}
+                          className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                            courseTypeFilter === value
+                              ? 'bg-white text-blue-600 shadow-sm font-semibold'
+                              : 'text-gray-500 hover:text-gray-700'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="w-px h-5 bg-gray-200" />
+
+                  {/* Progress */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">State</span>
+                    <select
+                      value={progressFilter}
+                      onChange={(e) => { setProgressFilter(e.target.value as any); setCoursePage(1); }}
+                      className="px-3 py-1.5 bg-gray-100 border-0 rounded-lg text-xs font-medium text-gray-600 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer hover:bg-gray-200 transition-colors"
+                    >
+                      <option value="all">All States</option>
+                      <option value="not_started">⭕ Not started</option>
+                      <option value="in_progress">🔄 In progress</option>
+                      <option value="completed">✅ Completed</option>
+                    </select>
+                  </div>
+
+                  <div className="w-px h-5 bg-gray-200" />
+
+                  {/* Sort */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Sort</span>
+                    <div className="flex gap-1">
+                      {([
+                        { asc: 'oldest',       desc: 'newest',       label: 'Date'     },
+                        { asc: 'rating_low',   desc: 'rating_high',  label: '★ Rating' },
+                        { asc: 'progress_low', desc: 'progress_high', label: 'Progress' },
+                      ] as const).map(({ asc, desc, label }) => {
+                        const isActive = courseSortBy === asc || courseSortBy === desc;
+                        const isAsc = courseSortBy === asc;
+                        return (
+                          <button
+                            key={label}
+                            onClick={() => {
+                              setCourseSortBy(isActive ? (isAsc ? desc : asc) : desc);
+                              setCoursePage(1);
+                            }}
+                            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                              isActive
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                : justCleared
+                                ? 'bg-white text-gray-500 border-gray-200'
+                                : 'bg-white text-gray-500 border-gray-200 hover:border-blue-300 hover:text-blue-600'
+                            }`}
+                          >
+                            {label}
+                            <span>{isActive ? (isAsc ? '↑' : '↓') : '↕'}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Clear all — pushed to the right */}
                   <button
-                    key={value}
-                    onClick={() => { setProgressFilter(value); setCoursePage(1); }}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${
-                      progressFilter === value
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-white text-gray-600 border-gray-300 hover:border-blue-300'
-                    }`}
+                    onClick={(e) => {
+                      setCourseSearch('');
+                      setCourseTypeFilter('all');
+                      setProgressFilter('all');
+                      setCourseSortBy('newest');
+                      setCoursePage(1);
+                      setJustCleared(true);
+                      setTimeout(() => setJustCleared(false), 300);
+                      (e.currentTarget as HTMLButtonElement).blur();
+                    }}
+                    className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:text-red-500 hover:bg-red-50 border border-transparent hover:border-red-200 transition-all"
                   >
-                    {label}
+                    <X className="w-3.5 h-3.5" />
+                    Clear all
                   </button>
-                ))}
+                </div>
               </div>
 
               {/* Enrollment list */}
@@ -380,7 +429,12 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
                 <div className="text-center py-8">
                   <p className="text-gray-500 text-sm">No courses match your search.</p>
                   <button
-                    onClick={() => { setCourseSearch(''); setCourseTypeFilter('all'); setProgressFilter('all'); setCourseSortBy('newest'); }}
+                    onClick={() => {
+                      setCourseSearch('');
+                      setCourseTypeFilter('all');
+                      setProgressFilter('all');
+                      setCourseSortBy('newest');
+                    }}
                     className="mt-2 text-sm text-blue-600 hover:text-blue-700"
                   >
                     Clear filters
@@ -415,9 +469,12 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
 
                         {/* Info */}
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-gray-900 mb-1">
-                            {enrollment.course.title}
-                          </h3>
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-semibold text-gray-900 truncate">
+                              {enrollment.course.title}
+                            </h3>
+                            <StarBadge average={enrollment.course.averageRating} />
+                          </div>
                           <p className="text-sm text-gray-600 mb-2 line-clamp-1">
                             {enrollment.course.description}
                           </p>
@@ -439,7 +496,6 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
                                 {enrollment.course.enrollmentCount} enrolled
                               </span>
                             )}
-                            <StarBadge average={enrollment.course.averageRating} />
                           </div>
                         </div>
 

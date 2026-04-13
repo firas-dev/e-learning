@@ -22,6 +22,6 @@ const ratingSchema = new Schema<IRating>(
 );
 
 // One rating per student per lesson
-ratingSchema.index({ lessonId: 1, studentId: 1 }, { unique: true });
+ratingSchema.index({ courseId: 1, lessonId: 1, studentId: 1 }, { unique: true });
 
 export default mongoose.model<IRating>("Rating", ratingSchema); 
