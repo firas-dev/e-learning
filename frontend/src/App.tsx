@@ -14,17 +14,37 @@ import CourseCatalog from './pages/CourseCatalog';
 
 function AppContent() {
   const { user, loading } = useAuth();
-  const [currentPage, setCurrentPage] = useState('dashboard');
+
+  const [currentPage, setCurrentPage] = useState<string>(() => {
+    return sessionStorage.getItem('currentPage') || 'dashboard';
+  });
+
   const [selectedCourse, setSelectedCourse] = useState<{
     id: string;
     title: string;
     type?: 'live' | 'recorded';
-  } | null>(null);
+  } | null>(() => {
+    const stored = sessionStorage.getItem('selectedCourse');
+    return stored ? JSON.parse(stored) : null;
+  });
 
-  const [isResetPage, setIsResetPage] = useState(() => {
+  const [isResetPage] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.has('token') && window.location.pathname === '/reset-password';
   });
+
+  const handleSetCurrentPage = (page: string) => {
+    sessionStorage.setItem('currentPage', page);
+    setCurrentPage(page);
+  };
+
+  const handleSetSelectedCourse = (
+    course: { id: string; title: string; type?: 'live' | 'recorded' } | null
+  ) => {
+    if (course) sessionStorage.setItem('selectedCourse', JSON.stringify(course));
+    else sessionStorage.removeItem('selectedCourse');
+    setSelectedCourse(course);
+  };
 
   if (loading) {
     return (
@@ -41,70 +61,67 @@ function AppContent() {
     return (
       <ResetPassword
         onBack={() => {
-          setIsResetPage(false);
           window.history.replaceState({}, '', '/');
+          handleSetCurrentPage('dashboard');
         }}
       />
     );
   }
 
-  if (!user) return <Login />;
+  if (!user) {
+    // Clear navigation state on logout/unauthenticated
+    sessionStorage.removeItem('currentPage');
+    sessionStorage.removeItem('selectedCourse');
+    return <Login />;
+  }
 
-  // ── Course Lessons page (teacher) ──
   if (currentPage === 'course-lessons' && selectedCourse) {
     return (
-      <NavigationProvider currentPage={currentPage} setCurrentPage={setCurrentPage}>
+      <NavigationProvider currentPage={currentPage} setCurrentPage={handleSetCurrentPage}>
         <CourseLessons courseId={selectedCourse.id} courseTitle={selectedCourse.title} />
       </NavigationProvider>
     );
   }
 
-  // ── Live Class page ──
   if (currentPage === 'live-class' && selectedCourse) {
     return (
-      <NavigationProvider currentPage={currentPage} setCurrentPage={setCurrentPage}>
+      <NavigationProvider currentPage={currentPage} setCurrentPage={handleSetCurrentPage}>
         <LiveClass courseId={selectedCourse.id} courseTitle={selectedCourse.title} />
       </NavigationProvider>
     );
   }
 
-  // ── Recorded Course page ──
   if (currentPage === 'recorded-course' && selectedCourse) {
     return (
-      <NavigationProvider currentPage={currentPage} setCurrentPage={setCurrentPage}>
+      <NavigationProvider currentPage={currentPage} setCurrentPage={handleSetCurrentPage}>
         <RecordedCourse courseId={selectedCourse.id} courseTitle={selectedCourse.title} />
       </NavigationProvider>
     );
   }
 
   return (
-    <NavigationProvider currentPage={currentPage} setCurrentPage={setCurrentPage}>
-
-      {/* Student Dashboard */}
+    <NavigationProvider currentPage={currentPage} setCurrentPage={handleSetCurrentPage}>
       {currentPage === 'dashboard' && user?.role === 'student' && (
         <StudentDashboard
           onOpenCourse={(id, title, type) => {
-            setSelectedCourse({ id: String(id), title, type });
-            setCurrentPage(type === 'live' ? 'live-class' : 'recorded-course');
+            handleSetSelectedCourse({ id: String(id), title, type });
+            handleSetCurrentPage(type === 'live' ? 'live-class' : 'recorded-course');
           }}
         />
       )}
 
-      {/* Teacher Dashboard */}
       {currentPage === 'dashboard' && user?.role === 'teacher' && (
         <TeacherDashboard
-        onOpenCourse={(id, title, type) => {
-          setSelectedCourse({ id: String(id), title, type });
-          setCurrentPage(type === 'live' ? 'live-class' : 'course-lessons');
-        }}
-      />
+          onOpenCourse={(id, title, type) => {
+            handleSetSelectedCourse({ id: String(id), title, type });
+            handleSetCurrentPage(type === 'live' ? 'live-class' : 'course-lessons');
+          }}
+        />
       )}
 
-      {/* Admin Dashboard */}
       {currentPage === 'dashboard' && user?.role === 'admin' && <AdminDashboard />}
       {currentPage === 'catalog' && user?.role === 'student' && <CourseCatalog />}
       {currentPage === 'privacy' && <PrivacySettings />}
-
     </NavigationProvider>
   );
 }

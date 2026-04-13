@@ -5,6 +5,7 @@ import { useNavigation } from '../contexts/NavigationContext';
 import {
   Plus, Trash2, Upload, FileText, Video,
   ChevronDown, ChevronUp, ArrowLeft, X, Loader2,
+  Eye,
 } from 'lucide-react';
 
 interface CourseLessonsProps {
@@ -270,11 +271,12 @@ export default function CourseLessons({ courseId, courseTitle }: CourseLessonsPr
                               key={file.publicId}
                               className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm"
                             >
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
                                 {file.mimetype.includes('pdf')
-                                  ? <FileText className="w-4 h-4 text-red-500" />
-                                  : <Video className="w-4 h-4 text-blue-500" />
+                                  ? <FileText className="w-4 h-4 text-red-500 flex-shrink-0" />
+                                  : <Video className="w-4 h-4 text-blue-500 flex-shrink-0" />
                                 }
+                                {/* View link — no download attribute */}
                                 <a
                                   href={file.url}
                                   target="_blank"
@@ -284,12 +286,23 @@ export default function CourseLessons({ courseId, courseTitle }: CourseLessonsPr
                                   {file.originalName}
                                 </a>
                               </div>
-                              <div className="flex items-center gap-3 text-gray-400">
+                              <div className="flex items-center gap-3 text-gray-400 flex-shrink-0">
                                 <span className="text-xs">{formatSize(file.size)}</span>
+                                {/* Eye icon for preview */}
+                                <a
+                                  href={file.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="hover:text-blue-500"
+                                  title="Preview"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </a>
                                 <button
                                   onClick={() =>
                                     deleteFile(lesson._id, file.publicId, file.mimetype)
                                   }
+                                  title="Delete file"
                                 >
                                   <X className="w-4 h-4 hover:text-red-500" />
                                 </button>

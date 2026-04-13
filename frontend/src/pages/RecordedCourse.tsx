@@ -7,14 +7,16 @@ import Navbar from '../components/Navbar';
 import EmotionIndicator from '../components/EmotionIndicator';
 import CameraConsentModal from '../components/CameraConsentModal';
 import {
-  Play, FileText, Camera, CameraOff,
-  Download, ChevronDown, ChevronUp,
+  Play, FileText,
+  Camera,
+  ChevronDown, ChevronUp,
   Video, ArrowLeft, Link, Loader2,
   CheckCircle,
   Star,
+  Eye,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import CommentsAndRating, { CourseRatingInline , LessonRatingWidget } from '../components/CommentsAndRating';
+import CommentsAndRating, { CourseRatingInline, LessonRatingWidget } from '../components/CommentsAndRating';
 
 
 interface RecordedCourseProps {
@@ -26,8 +28,6 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
   const { } = useAuth();
   const { setCurrentPage } = useNavigation();
   const { lessons, loading } = useLessons(courseId);
-  const [courseRatingAvg, setCourseRatingAvg] = useState<number | undefined>(undefined);
-  const [courseRatingCount, setCourseRatingCount] = useState<number | undefined>(undefined);
   const {
     completedIds,
     progressPercent,
@@ -36,10 +36,10 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
     forceCompleteLesson,
   } = useProgress(courseId, lessons.length);
 
-  // ── Learning timer: ticks while in the window, pauses on leave ──────────
+  // ── Learning timer ──────────────────────────────────────────────────────
   const { pause: pauseTimer, resume: resumeTimer } = useLearningTimer(courseId);
 
-  // ── Video ref for auto-pause on visibility change ────────────────────────
+  // ── Video ref ────────────────────────────────────────────────────────────
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -75,10 +75,10 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
   const [currentEmotion] = useState<'engaged' | 'confused' | 'bored' | 'neutral'>('neutral');
   const [showResources, setShowResources] = useState(true);
   const [selectedLesson, setSelectedLesson] = useState<string | null>(null);
+  const [courseRating, setCourseRating] = useState<{ avg: number; cnt: number } | null>(null);
 
   const currentLesson = lessons.find((l) => l._id === selectedLesson) || lessons[0] || null;
 
-  // Derived helpers
   const isVideo = (mimetype: string) =>
     ['video/mp4', 'video/webm', 'video/ogg'].includes(mimetype);
 
@@ -90,14 +90,8 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
     return <Video className="w-5 h-5 text-blue-600" />;
   };
 
-  const formatSize = (bytes: number) =>
-    bytes < 1024 * 1024
-      ? `${(bytes / 1024).toFixed(1)} KB`
-      : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-
   const handleSelectLesson = (lessonId: string) => {
     setSelectedLesson(lessonId);
-
     const lesson = lessons.find((l) => l._id === lessonId);
     const hasVideo = lesson?.files.some((f) => isVideo(f.mimetype));
     if (!hasVideo) {
@@ -140,14 +134,18 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
               <p className="text-gray-600 mt-1">{currentLesson.title}</p>
             )}
           </div>
-          <div className="flex justify-end">
-                <div className="flex items-center gap-1.5 bg-white border border-gray-200 shadow-sm px-3 py-1.5 rounded-lg">
-                  <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
-                  <span className="text-xs text-gray-500 font-medium">Course avg</span>
-                  <CourseRatingInline courseId={courseId} externalAverage={courseRatingAvg} externalCount={courseRatingCount} />
-                </div>
-          </div>
-         
+
+          {lessons.length > 0 && (
+            <div className="text-right flex-shrink-0">
+              <p className="text-sm font-semibold text-gray-900">{progressPercent}% complete</p>
+              <div className="w-32 h-2 bg-gray-200 rounded-full mt-1 overflow-hidden">
+                <div
+                  className="h-full bg-blue-600 rounded-full transition-all duration-500"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {lessons.length === 0 ? (
@@ -159,7 +157,7 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
 
-              {/* Video Player */}
+              {/* Video Player — download & right-click disabled */}
               <div className="bg-gray-900 rounded-xl overflow-hidden shadow-lg">
                 <div className="relative aspect-video bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
                   {videoFile ? (
@@ -168,6 +166,9 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                       key={videoFile.url}
                       src={videoFile.url}
                       controls
+                      controlsList="nodownload nofullscreen"
+                      disablePictureInPicture
+                      onContextMenu={(e) => e.preventDefault()}
                       className="w-full h-full object-contain"
                       onTimeUpdate={
                         currentLesson
@@ -187,31 +188,8 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                       <Camera className="w-8 h-8 text-gray-400" />
                     </div>
                   )}
-
-                  <div className="absolute bottom-4 right-4">
-                    {/*!cameraEnabled ? (
-                      <button
-                        onClick={() => setShowConsentModal(true)}
-                        className="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-xs font-medium flex items-center gap-2 transition-colors"
-                      >
-                        <Camera className="w-4 h-4" />
-                        Enable AI Detection
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => setCameraEnabled(false)}
-                        className="px-3 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-white text-xs font-medium flex items-center gap-2 transition-colors"
-                      >
-                        <CameraOff className="w-4 h-4" />
-                        Disable
-                      </button>
-                    )*/}
-                  </div>
                 </div>
               </div>
-
-              {/* Course avg rating — below video, top-right */}
-              
 
               {/* Emotion Timeline */}
               {cameraEnabled && (
@@ -229,7 +207,7 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                 </div>
               )}
 
-              {/* About + Resources */}
+              {/* About + Lesson Rating + Resources */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200">
                 {currentLesson?.description && (
                   <div className="p-6">
@@ -238,27 +216,33 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                         <h3 className="text-lg font-bold text-gray-900 mb-2">About This Lesson</h3>
                         <p className="text-gray-600 leading-relaxed">{currentLesson.description}</p>
                       </div>
-                      {/* Lesson rating only — course avg moved to header */}
-                      <div className="flex-shrink-0 border-l border-gray-100 pl-9">
+                      {/* Course average rating */}
+                      <div className="flex-shrink-0 border-l border-gray-100 pl-6">
                         <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1">
-                          <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" /> Rate this lesson
+                          <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" /> Course Rating
                         </p>
-                        {currentLesson && (
-                          <LessonRatingWidget
-                            courseId={courseId}
-                            lessonId={currentLesson._id}
-                            onCourseUpdate={(avg, cnt) => {
-                              setCourseRatingAvg(avg);
-                              setCourseRatingCount(cnt);
-                            }}
-                          />
-                        )}
+                        <CourseRatingInline
+                          courseId={courseId}
+                          externalAverage={courseRating?.avg}
+                          externalCount={courseRating?.cnt}
+                        />
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* Read-only completion status */}
+                {/* Lesson rating widget (students only) */}
+                {currentLesson && (
+                  <div className="px-6 pb-2">
+                    <LessonRatingWidget
+                      courseId={courseId}
+                      lessonId={currentLesson._id}
+                      onCourseUpdate={(avg, cnt) => setCourseRating({ avg, cnt })}
+                    />
+                  </div>
+                )}
+
+                {/* Completion status */}
                 {currentLesson && (
                   <div className="px-6 pb-4 border-t border-gray-100 pt-4">
                     {completedIds.has(currentLesson._id) ? (
@@ -276,6 +260,7 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                   </div>
                 )}
 
+                {/* Resources — view only, no download */}
                 <div className="border-t border-gray-200 p-6">
                   <button
                     onClick={() => setShowResources(!showResources)}
@@ -300,38 +285,52 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                       {currentLesson.files.length === 0 ? (
                         <p className="text-sm text-gray-400">No files in this lesson.</p>
                       ) : (
-                        currentLesson.files.map((file) => (
-                          <a
-                            key={file.publicId}
-                            href={file.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                          >
-                            <div className="flex items-center gap-3">
-                              {getFileIcon(file.mimetype)}
-                              <div>
-                                <p className="font-medium text-gray-900 text-sm">{file.originalName}</p>
-                                {file.size > 0 && (
-                                  <p className="text-xs text-gray-500">{formatSize(file.size)}</p>
-                                )}
+                        currentLesson.files.map((file) => {
+                          const isPdf = file.mimetype === 'application/pdf';
+                          const isLink = file.mimetype === 'text/uri-list';
+
+                          return (
+                            <div
+                              key={file.publicId}
+                              className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                {getFileIcon(file.mimetype)}
+                                <div className="min-w-0">
+                                  <p className="font-medium text-gray-900 text-sm truncate">
+                                    {file.originalName}
+                                  </p>
+                                </div>
                               </div>
+
+                              {/* View button — opens in new tab, no download attribute */}
+                              {(isPdf || isLink) && (
+                                <a
+                                  href={file.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  // No `download` attribute — browser opens inline
+                                  className="ml-3 flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg text-xs font-medium transition-colors"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  View
+                                </a>
+                              )}
                             </div>
-                            <Download className="w-5 h-5 text-gray-400 hover:text-gray-600" />
-                          </a>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                   )}
                 </div>
-                <CommentsAndRating courseId={courseId} lessonId={currentLesson?._id} onCourseRatingUpdate={(avg, cnt) => {setCourseRatingAvg(avg); setCourseRatingCount(cnt); }} />
+                <CommentsAndRating courseId={courseId} lessonId={currentLesson?._id} />
               </div>
             </div>
 
             {/* Right side panel */}
             <div className="space-y-6">
 
-              {/* Progress bar in sidebar */}
+              {/* Progress bar */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                 <h3 className="text-lg font-bold text-gray-900 mb-3">Your Progress</h3>
                 <div className="flex items-center justify-between mb-2">
@@ -372,21 +371,23 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                         id={`lesson-item-${lesson._id}`}
                         onClick={() => handleSelectLesson(lesson._id)}
                         className={`p-3 rounded-lg cursor-pointer transition-colors ${isCurrent
-                            ? 'bg-blue-50 border-2 border-blue-500'
-                            : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
-                          }`}
+                          ? 'bg-blue-50 border-2 border-blue-500'
+                          : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
+                        }`}
                       >
                         <div className="flex items-center gap-2">
                           {isCompleted ? (
                             <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
                           ) : (
-                            <span className={`text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${isCurrent ? 'bg-blue-500 text-white' : 'bg-gray-300 text-gray-600'
-                              }`}>
+                            <span className={`text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
+                              isCurrent ? 'bg-blue-500 text-white' : 'bg-gray-300 text-gray-600'
+                            }`}>
                               {index + 1}
                             </span>
                           )}
-                          <p className={`text-sm font-medium truncate ${isCurrent ? 'text-blue-900' : isCompleted ? 'text-green-700' : 'text-gray-900'
-                            }`}>
+                          <p className={`text-sm font-medium truncate ${
+                            isCurrent ? 'text-blue-900' : isCompleted ? 'text-green-700' : 'text-gray-900'
+                          }`}>
                             {lesson.title}
                           </p>
                         </div>
