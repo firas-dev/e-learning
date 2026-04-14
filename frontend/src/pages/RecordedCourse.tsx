@@ -22,9 +22,10 @@ import CommentsAndRating, { CourseRatingInline, LessonRatingWidget } from '../co
 interface RecordedCourseProps {
   courseId: string;
   courseTitle: string;
+  onOpenPDF?: (url: string, fileName: string) => void;
 }
 
-export default function RecordedCourse({ courseId, courseTitle }: RecordedCourseProps) {
+export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: RecordedCourseProps) {
   const { } = useAuth();
   const { setCurrentPage } = useNavigation();
   const { lessons, loading } = useLessons(courseId);
@@ -36,10 +37,8 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
     forceCompleteLesson,
   } = useProgress(courseId, lessons.length);
 
-  // ── Learning timer ──────────────────────────────────────────────────────
   const { pause: pauseTimer, resume: resumeTimer } = useLearningTimer(courseId);
 
-  // ── Video ref ────────────────────────────────────────────────────────────
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -99,6 +98,16 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
     }
   };
 
+  // Open PDF in the in-platform viewer
+  const handleOpenFile = (file: { url: string; originalName: string; mimetype: string }) => {
+    if (file.mimetype === 'application/pdf' && onOpenPDF) {
+      onOpenPDF(file.url, file.originalName);
+    } else {
+      // For links and other types, open in new tab
+      window.open(file.url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -135,17 +144,22 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
             )}
           </div>
 
-          {lessons.length > 0 && (
-            <div className="text-right flex-shrink-0">
-              <p className="text-sm font-semibold text-gray-900">{progressPercent}% complete</p>
-              <div className="w-32 h-2 bg-gray-200 rounded-full mt-1 overflow-hidden">
-                <div
-                  className="h-full bg-blue-600 rounded-full transition-all duration-500"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-            </div>
-          )}
+          <div className="flex flex-col gap-1.5 bg-white border border-gray-200 shadow-sm px-3 py-1.5 rounded-lg">    
+  
+  {/* Top row: label + star */}
+  <div className="flex items-center gap-2">
+    <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
+    <span className="text-black-500 font-medium">Course Rating</span>
+  </div>
+
+  {/* Bottom row: rating */}
+  <CourseRatingInline 
+    courseId={courseId} 
+    externalAverage={courseRating?.avg} 
+    externalCount={courseRating?.cnt}
+  />
+
+</div>
         </div>
 
         {lessons.length === 0 ? (
@@ -157,7 +171,7 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
 
-              {/* Video Player — download & right-click disabled */}
+              {/* Video Player */}
               <div className="bg-gray-900 rounded-xl overflow-hidden shadow-lg">
                 <div className="relative aspect-video bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
                   {videoFile ? (
@@ -166,7 +180,7 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                       key={videoFile.url}
                       src={videoFile.url}
                       controls
-                      controlsList="nodownload nofullscreen"
+                      controlsList="nodownload"
                       disablePictureInPicture
                       onContextMenu={(e) => e.preventDefault()}
                       className="w-full h-full object-contain"
@@ -216,51 +230,23 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                         <h3 className="text-lg font-bold text-gray-900 mb-2">About This Lesson</h3>
                         <p className="text-gray-600 leading-relaxed">{currentLesson.description}</p>
                       </div>
-                      {/* Course average rating */}
-                      <div className="flex-shrink-0 border-l border-gray-100 pl-6">
+                      {/* Lesson rating only — course avg moved to header */}
+                      <div className="flex-shrink-0 border-l border-gray-100 pl-9">
                         <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1">
-                          <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" /> Course Rating
+                          <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" /> Rate this lesson
                         </p>
-                        <CourseRatingInline
+                        {currentLesson && (
+                          <LessonRatingWidget
                           courseId={courseId}
-                          externalAverage={courseRating?.avg}
-                          externalCount={courseRating?.cnt}
+                          lessonId={currentLesson._id}
+                          onCourseUpdate={(avg, cnt) => setCourseRating({ avg, cnt })}
                         />
+                        )}
                       </div>
                     </div>
                   </div>
                 )}
-
-                {/* Lesson rating widget (students only) */}
-                {currentLesson && (
-                  <div className="px-6 pb-2">
-                    <LessonRatingWidget
-                      courseId={courseId}
-                      lessonId={currentLesson._id}
-                      onCourseUpdate={(avg, cnt) => setCourseRating({ avg, cnt })}
-                    />
-                  </div>
-                )}
-
-                {/* Completion status */}
-                {currentLesson && (
-                  <div className="px-6 pb-4 border-t border-gray-100 pt-4">
-                    {completedIds.has(currentLesson._id) ? (
-                      <div className="flex items-center gap-2 text-green-600 font-medium text-sm">
-                        <CheckCircle className="w-5 h-5" />
-                        Lesson completed!
-                      </div>
-                    ) : (
-                      <p className="text-xs text-gray-400">
-                        {videoFile
-                          ? 'Auto-completes after watching 90% of the video'
-                          : 'Will be marked complete once you open this lesson'}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Resources — view only, no download */}
+                {/* Resources */}
                 <div className="border-t border-gray-200 p-6">
                   <button
                     onClick={() => setShowResources(!showResources)}
@@ -288,6 +274,7 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                         currentLesson.files.map((file) => {
                           const isPdf = file.mimetype === 'application/pdf';
                           const isLink = file.mimetype === 'text/uri-list';
+                          const isViewable = isPdf || isLink;
 
                           return (
                             <div
@@ -300,21 +287,20 @@ export default function RecordedCourse({ courseId, courseTitle }: RecordedCourse
                                   <p className="font-medium text-gray-900 text-sm truncate">
                                     {file.originalName}
                                   </p>
+                                  {isPdf && (
+                                    <p className="text-xs text-gray-400 mt-0.5">PDF document</p>
+                                  )}
                                 </div>
                               </div>
 
-                              {/* View button — opens in new tab, no download attribute */}
-                              {(isPdf || isLink) && (
-                                <a
-                                  href={file.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  // No `download` attribute — browser opens inline
+                              {isViewable && (
+                                <button
+                                  onClick={() => handleOpenFile(file)}
                                   className="ml-3 flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg text-xs font-medium transition-colors"
                                 >
                                   <Eye className="w-3.5 h-3.5" />
-                                  View
-                                </a>
+                                  {isPdf ? 'Open PDF' : 'View'}
+                                </button>
                               )}
                             </div>
                           );

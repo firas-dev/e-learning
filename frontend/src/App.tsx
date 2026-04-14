@@ -11,6 +11,7 @@ import RecordedCourse from './pages/RecordedCourse';
 import PrivacySettings from './pages/PrivacySettings';
 import CourseLessons from './pages/CourseLessons';
 import CourseCatalog from './pages/CourseCatalog';
+import PDFViewer from './pages/Pdfviewer';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -25,6 +26,14 @@ function AppContent() {
     type?: 'live' | 'recorded';
   } | null>(() => {
     const stored = sessionStorage.getItem('selectedCourse');
+    return stored ? JSON.parse(stored) : null;
+  });
+
+  const [selectedPDF, setSelectedPDF] = useState<{
+    url: string;
+    fileName: string;
+  } | null>(() => {
+    const stored = sessionStorage.getItem('selectedPDF');
     return stored ? JSON.parse(stored) : null;
   });
 
@@ -44,6 +53,13 @@ function AppContent() {
     if (course) sessionStorage.setItem('selectedCourse', JSON.stringify(course));
     else sessionStorage.removeItem('selectedCourse');
     setSelectedCourse(course);
+  };
+
+  const handleOpenPDF = (url: string, fileName: string) => {
+    const pdf = { url, fileName };
+    sessionStorage.setItem('selectedPDF', JSON.stringify(pdf));
+    setSelectedPDF(pdf);
+    handleSetCurrentPage('pdf-viewer');
   };
 
   if (loading) {
@@ -69,10 +85,23 @@ function AppContent() {
   }
 
   if (!user) {
-    // Clear navigation state on logout/unauthenticated
     sessionStorage.removeItem('currentPage');
     sessionStorage.removeItem('selectedCourse');
+    sessionStorage.removeItem('selectedPDF');
     return <Login />;
+  }
+
+  if (currentPage === 'pdf-viewer' && selectedPDF) {
+    return (
+      <NavigationProvider currentPage={currentPage} setCurrentPage={handleSetCurrentPage}>
+        <PDFViewer
+          url={selectedPDF.url}
+          fileName={selectedPDF.fileName}
+          courseId={selectedCourse?.id}
+          courseTitle={selectedCourse?.title}
+        />
+      </NavigationProvider>
+    );
   }
 
   if (currentPage === 'course-lessons' && selectedCourse) {
@@ -94,7 +123,11 @@ function AppContent() {
   if (currentPage === 'recorded-course' && selectedCourse) {
     return (
       <NavigationProvider currentPage={currentPage} setCurrentPage={handleSetCurrentPage}>
-        <RecordedCourse courseId={selectedCourse.id} courseTitle={selectedCourse.title} />
+        <RecordedCourse
+          courseId={selectedCourse.id}
+          courseTitle={selectedCourse.title}
+          onOpenPDF={handleOpenPDF}
+        />
       </NavigationProvider>
     );
   }

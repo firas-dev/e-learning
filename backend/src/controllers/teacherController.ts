@@ -155,6 +155,7 @@ export const deleteCourse = async (req: Request, res: Response) => {
     );
 
     await Lesson.deleteMany({ courseId });
+    await Enrollment.deleteMany({ courseId });
     await Course.findByIdAndDelete(courseId);
 
     res.json({ message: "Course deleted successfully." });
