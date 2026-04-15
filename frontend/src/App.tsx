@@ -133,8 +133,6 @@ function AppContent() {
       </NavigationProvider>
     );
   }
-  {currentPage === 'profile' && user?.role === 'teacher' && <TeacherProfile />}
-  {currentPage === 'profile' && user?.role === 'student' && <StudentProfile />}
 
 
   return (
@@ -159,7 +157,9 @@ function AppContent() {
 
       {currentPage === 'dashboard' && user?.role === 'admin' && <AdminDashboard />}
       {currentPage === 'catalog' && user?.role === 'student' && <CourseCatalog />}
-      {currentPage === 'privacy' && <PrivacySettings />}
+      {currentPage === 'privacy' && <PrivacySettings />}    
+      {currentPage === 'profile' && user?.role === 'teacher' && <TeacherProfile />}
+      {currentPage === 'profile' && user?.role === 'student' && <StudentProfile />}
     </NavigationProvider>
   );
 }
