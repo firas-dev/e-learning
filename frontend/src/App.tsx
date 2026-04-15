@@ -11,7 +11,9 @@ import RecordedCourse from './pages/RecordedCourse';
 import PrivacySettings from './pages/PrivacySettings';
 import CourseLessons from './pages/CourseLessons';
 import CourseCatalog from './pages/CourseCatalog';
-import PDFViewer from './pages/Pdfviewer';
+import TeacherProfile from './pages/TeacherProfile';
+import StudentProfile from './pages/StudentProfile';
+import PDFViewer from './pages/PdfViewer';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -131,6 +133,9 @@ function AppContent() {
       </NavigationProvider>
     );
   }
+  {currentPage === 'profile' && user?.role === 'teacher' && <TeacherProfile />}
+  {currentPage === 'profile' && user?.role === 'student' && <StudentProfile />}
+
 
   return (
     <NavigationProvider currentPage={currentPage} setCurrentPage={handleSetCurrentPage}>

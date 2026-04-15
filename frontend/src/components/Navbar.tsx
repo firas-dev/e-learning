@@ -1,6 +1,6 @@
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '../contexts/NavigationContext';
-import { BookOpen, LogOut, Settings } from 'lucide-react';
+import { BookOpen, LogOut, Settings, User } from 'lucide-react';
 import NotificationBell from './NotificationBell';
 
 export default function Navbar() {
@@ -52,7 +52,13 @@ export default function Navbar() {
             <div className="flex items-center gap-2">
               {/* ✅ Bell only for students */}
               {user?.role === 'student' && <NotificationBell />}
-
+              <button
+                onClick={() => setCurrentPage('profile')}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="My profile"
+              >
+                <User className="w-5 h-5 text-gray-600" />
+              </button>
               <button
                 onClick={() => setCurrentPage('privacy')}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
