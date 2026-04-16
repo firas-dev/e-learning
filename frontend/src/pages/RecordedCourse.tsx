@@ -4,8 +4,8 @@ import { useLessons } from '../hooks/useLessons';
 import { useProgress } from '../hooks/useProgress';
 import { useLearningTimer } from '../hooks/useLearningTimer';
 import Navbar from '../components/Navbar';
-import EmotionIndicator from '../components/EmotionIndicator';
 import CameraConsentModal from '../components/CameraConsentModal';
+import EmotionIndicator from '../components/EmotionIndicator';
 import {
   Play, FileText,
   Camera,
@@ -14,10 +14,11 @@ import {
   CheckCircle,
   Star,
   Eye,
+  Users,
+  BookOpen,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import CommentsAndRating, { CourseRatingInline, LessonRatingWidget } from '../components/CommentsAndRating';
-
 
 interface RecordedCourseProps {
   courseId: string;
@@ -26,48 +27,43 @@ interface RecordedCourseProps {
 }
 
 export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: RecordedCourseProps) {
-  const { } = useAuth();
+  const { user } = useAuth();
   const { setCurrentPage } = useNavigation();
   const { lessons, loading } = useLessons(courseId);
+
+  const isTeacher = user?.role === 'teacher';
+  const isStudent = user?.role === 'student';
+
+  // Progress tracking — only for students
   const {
     completedIds,
     progressPercent,
     hydrated,
     getVideoTimeUpdateHandler,
     forceCompleteLesson,
-  } = useProgress(courseId, lessons.length);
+  } = useProgress(isStudent ? courseId : '', lessons.length);
 
-  const { pause: pauseTimer, resume: resumeTimer } = useLearningTimer(courseId);
+  const { pause: pauseTimer, resume: resumeTimer } = useLearningTimer(isStudent ? courseId : undefined);
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
+    if (!isStudent) return;
     const handleVisibilityChange = () => {
-      if (document.hidden) {
-        videoRef.current?.pause();
-        pauseTimer();
-      } else {
-        resumeTimer();
-      }
+      if (document.hidden) { videoRef.current?.pause(); pauseTimer(); }
+      else resumeTimer();
     };
-
-    const handleBlur = () => {
-      videoRef.current?.pause();
-      pauseTimer();
-    };
-
+    const handleBlur = () => { videoRef.current?.pause(); pauseTimer(); };
     const handleFocus = () => resumeTimer();
-
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('blur', handleBlur);
     window.addEventListener('focus', handleFocus);
-
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleBlur);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [pauseTimer, resumeTimer]);
+  }, [pauseTimer, resumeTimer, isStudent]);
 
   const [showConsentModal, setShowConsentModal] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(false);
@@ -91,19 +87,17 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: Rec
 
   const handleSelectLesson = (lessonId: string) => {
     setSelectedLesson(lessonId);
-    const lesson = lessons.find((l) => l._id === lessonId);
-    const hasVideo = lesson?.files.some((f) => isVideo(f.mimetype));
-    if (!hasVideo) {
-      forceCompleteLesson(lessonId);
+    if (isStudent) {
+      const lesson = lessons.find((l) => l._id === lessonId);
+      const hasVideo = lesson?.files.some((f) => isVideo(f.mimetype));
+      if (!hasVideo) forceCompleteLesson(lessonId);
     }
   };
 
-  // Open PDF in the in-platform viewer
   const handleOpenFile = (file: { url: string; originalName: string; mimetype: string }) => {
     if (file.mimetype === 'application/pdf' && onOpenPDF) {
       onOpenPDF(file.url, file.originalName);
     } else {
-      // For links and other types, open in new tab
       window.open(file.url, '_blank', 'noopener,noreferrer');
     }
   };
@@ -137,30 +131,48 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: Rec
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold text-gray-900">{courseTitle}</h1>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <h1 className="text-3xl font-bold text-gray-900 truncate">{courseTitle}</h1>
+              {isTeacher && (
+                <span className="flex-shrink-0 flex items-center gap-1 text-xs px-2.5 py-1 bg-indigo-100 text-indigo-700 rounded-full font-medium border border-indigo-200">
+                  <BookOpen className="w-3 h-3" />
+                  Teacher Preview
+                </span>
+              )}
+            </div>
             {currentLesson && (
-              <p className="text-gray-600 mt-1">{currentLesson.title}</p>
+              <p className="text-gray-600 mt-1 truncate">{currentLesson.title}</p>
             )}
           </div>
 
-          <div className="flex flex-col gap-1.5 bg-white border border-gray-200 shadow-sm px-3 py-1.5 rounded-lg">    
-  
-  {/* Top row: label + star */}
-  <div className="flex items-center gap-2">
-    <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
-    <span className="text-black-500 font-medium">Course Rating</span>
-  </div>
-
-  {/* Bottom row: rating */}
-  <CourseRatingInline 
-    courseId={courseId} 
-    externalAverage={courseRating?.avg} 
-    externalCount={courseRating?.cnt}
-  />
-
-</div>
+          {/* Course Rating — show for everyone */}
+          <div className="flex-shrink-0 flex flex-col gap-1.5 bg-white border border-gray-200 shadow-sm px-3 py-1.5 rounded-lg">
+            <div className="flex items-center gap-2">
+              <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
+              <span className="text-gray-600 font-medium text-sm">Course Rating</span>
+            </div>
+            <CourseRatingInline
+              courseId={courseId}
+              externalAverage={courseRating?.avg}
+              externalCount={courseRating?.cnt}
+            />
+          </div>
         </div>
+
+        {/* Teacher info banner */}
+        {isTeacher && (
+          <div className="mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex items-start gap-3">
+            <Users className="w-5 h-5 text-indigo-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-indigo-800">You're viewing this course as its teacher.</p>
+              <p className="text-xs text-indigo-600 mt-0.5">
+                You can preview all lesson content, view student discussions, reply to comments, and delete inappropriate messages.
+                Progress tracking and lesson ratings are available to enrolled students only.
+              </p>
+            </div>
+          </div>
+        )}
 
         {lessons.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
@@ -185,7 +197,7 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: Rec
                       onContextMenu={(e) => e.preventDefault()}
                       className="w-full h-full object-contain"
                       onTimeUpdate={
-                        currentLesson
+                        isStudent && currentLesson
                           ? getVideoTimeUpdateHandler(currentLesson._id)
                           : undefined
                       }
@@ -197,7 +209,7 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: Rec
                     </div>
                   )}
 
-                  {cameraEnabled && (
+                  {cameraEnabled && isStudent && (
                     <div className="absolute top-4 right-4 w-24 h-24 bg-gray-800 rounded-lg border-2 border-blue-500 flex items-center justify-center">
                       <Camera className="w-8 h-8 text-gray-400" />
                     </div>
@@ -205,8 +217,8 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: Rec
                 </div>
               </div>
 
-              {/* Emotion Timeline */}
-              {cameraEnabled && (
+              {/* Emotion Timeline — students only */}
+              {cameraEnabled && isStudent && (
                 <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
                   <h3 className="text-lg font-bold text-gray-900 mb-4">Emotion Timeline</h3>
                   <div className="relative h-24 bg-gray-50 rounded-lg p-4 flex items-end gap-1">
@@ -230,22 +242,34 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: Rec
                         <h3 className="text-lg font-bold text-gray-900 mb-2">About This Lesson</h3>
                         <p className="text-gray-600 leading-relaxed">{currentLesson.description}</p>
                       </div>
-                      {/* Lesson rating only — course avg moved to header */}
-                      <div className="flex-shrink-0 border-l border-gray-100 pl-9">
-                        <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1">
-                          <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" /> Rate this lesson
-                        </p>
-                        {currentLesson && (
-                          <LessonRatingWidget
-                          courseId={courseId}
-                          lessonId={currentLesson._id}
-                          onCourseUpdate={(avg, cnt) => setCourseRating({ avg, cnt })}
-                        />
-                        )}
-                      </div>
+                      {/* Lesson rating — students only */}
+                      {isStudent && (
+                        <div className="flex-shrink-0 border-l border-gray-100 pl-6">
+                          <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1">
+                            <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" /> Rate this lesson
+                          </p>
+                          {currentLesson && (
+                            <LessonRatingWidget
+                              courseId={courseId}
+                              lessonId={currentLesson._id}
+                              onCourseUpdate={(avg, cnt) => setCourseRating({ avg, cnt })}
+                            />
+                          )}
+                        </div>
+                      )}
+                      {/* Teacher sees lesson rating stats read-only */}
+                      {isTeacher && (
+                        <div className="flex-shrink-0 border-l border-gray-100 pl-6">
+                          <p className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-1">
+                            <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" /> Lesson rating
+                          </p>
+                          <p className="text-xs text-gray-400">(Student ratings shown in course header)</p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
+
                 {/* Resources */}
                 <div className="border-t border-gray-200 p-6">
                   <button
@@ -309,40 +333,76 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: Rec
                     </div>
                   )}
                 </div>
-                <CommentsAndRating courseId={courseId} lessonId={currentLesson?._id} />
+
+                {/* Discussion / Comments */}
+                <CommentsAndRating
+                  courseId={courseId}
+                  lessonId={currentLesson?._id}
+                  readOnlyMode={isTeacher}
+                />
               </div>
             </div>
 
             {/* Right side panel */}
             <div className="space-y-6">
 
-              {/* Progress bar */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <h3 className="text-lg font-bold text-gray-900 mb-3">Your Progress</h3>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-gray-600">
-                    {completedIds.size} of {lessons.length} lessons
-                  </span>
-                  <span className="text-sm font-bold text-blue-600">{progressPercent}%</span>
-                </div>
-                <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-blue-600 rounded-full transition-all duration-500"
-                    style={{ width: `${progressPercent}%` }}
-                  />
-                </div>
-                {!hydrated && (
-                  <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
-                    <Loader2 className="w-3 h-3 animate-spin" /> Syncing progress…
-                  </p>
-                )}
-                {progressPercent === 100 && (
-                  <div className="flex items-center gap-2 mt-3 text-green-600 text-sm font-medium">
-                    <CheckCircle className="w-4 h-4" />
-                    Course completed!
+              {/* Progress bar — students only */}
+              {isStudent && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <h3 className="text-lg font-bold text-gray-900 mb-3">Your Progress</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-gray-600">
+                      {completedIds.size} of {lessons.length} lessons
+                    </span>
+                    <span className="text-sm font-bold text-blue-600">{progressPercent}%</span>
                   </div>
-                )}
-              </div>
+                  <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-600 rounded-full transition-all duration-500"
+                      style={{ width: `${progressPercent}%` }}
+                    />
+                  </div>
+                  {!hydrated && (
+                    <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Syncing progress…
+                    </p>
+                  )}
+                  {progressPercent === 100 && (
+                    <div className="flex items-center gap-2 mt-3 text-green-600 text-sm font-medium">
+                      <CheckCircle className="w-4 h-4" />
+                      Course completed!
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Teacher stats panel */}
+              {isTeacher && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <BookOpen className="w-5 h-5 text-indigo-500" />
+                    Course Overview
+                  </h3>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex items-center justify-between py-2 border-b border-gray-50">
+                      <span className="text-gray-500">Total lessons</span>
+                      <span className="font-semibold text-gray-900">{lessons.length}</span>
+                    </div>
+                    <div className="flex items-center justify-between py-2 border-b border-gray-50">
+                      <span className="text-gray-500">Files uploaded</span>
+                      <span className="font-semibold text-gray-900">
+                        {lessons.reduce((acc, l) => acc + l.files.length, 0)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between py-2">
+                      <span className="text-gray-500">Video lessons</span>
+                      <span className="font-semibold text-gray-900">
+                        {lessons.filter(l => l.files.some(f => ['video/mp4','video/webm','video/ogg'].includes(f.mimetype))).length}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Course Content / Lessons List */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -350,15 +410,15 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: Rec
                 <div className="space-y-2">
                   {lessons.map((lesson, index) => {
                     const isCurrent = lesson._id === (currentLesson?._id);
-                    const isCompleted = completedIds.has(lesson._id);
+                    const isCompleted = isStudent && completedIds.has(lesson._id);
                     return (
                       <div
                         key={lesson._id}
-                        id={`lesson-item-${lesson._id}`}
                         onClick={() => handleSelectLesson(lesson._id)}
-                        className={`p-3 rounded-lg cursor-pointer transition-colors ${isCurrent
-                          ? 'bg-blue-50 border-2 border-blue-500'
-                          : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
+                        className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                          isCurrent
+                            ? 'bg-blue-50 border-2 border-blue-500'
+                            : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
                         }`}
                       >
                         <div className="flex items-center gap-2">
@@ -386,8 +446,8 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: Rec
                 </div>
               </div>
 
-              {/* AI Monitoring */}
-              {cameraEnabled && (
+              {/* AI Monitoring — students only */}
+              {cameraEnabled && isStudent && (
                 <div className="bg-green-50 border-2 border-green-500 rounded-xl shadow-sm p-6">
                   <h3 className="text-lg font-bold text-green-900 mb-2">AI Monitoring Active</h3>
                   <p className="text-sm text-green-700 mb-4">

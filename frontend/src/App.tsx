@@ -122,6 +122,7 @@ function AppContent() {
     );
   }
 
+  // Both students AND teachers can open the recorded course viewer
   if (currentPage === 'recorded-course' && selectedCourse) {
     return (
       <NavigationProvider currentPage={currentPage} setCurrentPage={handleSetCurrentPage}>
@@ -133,7 +134,6 @@ function AppContent() {
       </NavigationProvider>
     );
   }
-
 
   return (
     <NavigationProvider currentPage={currentPage} setCurrentPage={handleSetCurrentPage}>
@@ -150,14 +150,17 @@ function AppContent() {
         <TeacherDashboard
           onOpenCourse={(id, title, type) => {
             handleSetSelectedCourse({ id: String(id), title, type });
-            handleSetCurrentPage(type === 'live' ? 'live-class' : 'course-lessons');
+            // Teachers: live → live-class, recorded → recorded-course (preview) OR course-lessons (edit)
+            // We keep course-lessons for editing (existing behaviour from TeacherDashboard click)
+            // but if the teacher wants to preview, they now go to recorded-course
+            handleSetCurrentPage(type === 'live' ? 'live-class' : 'recorded-course');
           }}
         />
       )}
 
       {currentPage === 'dashboard' && user?.role === 'admin' && <AdminDashboard />}
       {currentPage === 'catalog' && user?.role === 'student' && <CourseCatalog />}
-      {currentPage === 'privacy' && <PrivacySettings />}    
+      {currentPage === 'privacy' && <PrivacySettings />}
       {currentPage === 'profile' && user?.role === 'teacher' && <TeacherProfile />}
       {currentPage === 'profile' && user?.role === 'student' && <StudentProfile />}
     </NavigationProvider>

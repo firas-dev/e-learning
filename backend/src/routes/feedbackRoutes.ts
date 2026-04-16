@@ -3,6 +3,7 @@ import { protect } from "../middleware/auth";
 import Comment from "../models/Comment";
 import Rating from "../models/Rating";
 import User from "../models/User";
+import mongoose from "mongoose";
 
 const router = express.Router();
 
@@ -17,7 +18,12 @@ async function getFullName(userId: string): Promise<string> {
 router.get("/:courseId/comments", protect, async (req, res) => {
   try {
     const filter: any = { courseId: req.params.courseId };
-    if (req.query.lessonId) filter.lessonId = req.query.lessonId;
+    if (req.query.lessonId) {
+      filter.lessonId = new mongoose.Types.ObjectId(req.query.lessonId as string);
+    } else {
+      // When no lessonId is provided, return ALL comments for the course
+      // (both lesson-specific and course-level)
+    }
     const comments = await Comment.find(filter).sort({ createdAt: -1 });
     res.json(comments);
   } catch (err: any) {
@@ -30,17 +36,29 @@ router.post("/:courseId/comments", protect, async (req, res) => {
   try {
     const user = (req as any).user;
     const { text, lessonId } = req.body;
-    if (!text?.trim()) return res.status(400).json({ message: "Comment text is required" });
+
+    if (!text?.trim()) {
+      return res.status(400).json({ message: "Comment text is required" });
+    }
+
     const studentName = await getFullName(user.id);
-    const comment = await Comment.create({
-      courseId: req.params.courseId,
-      lessonId: lessonId || undefined,
-      studentId: user.id,
+
+    const commentData: any = {
+      courseId: new mongoose.Types.ObjectId(req.params.courseId),
+      studentId: new mongoose.Types.ObjectId(user.id),
       studentName,
       text: text.trim(),
-    });
+    };
+
+    // Only add lessonId if it's a valid ObjectId string
+    if (lessonId && mongoose.Types.ObjectId.isValid(lessonId)) {
+      commentData.lessonId = new mongoose.Types.ObjectId(lessonId);
+    }
+
+    const comment = await Comment.create(commentData);
     res.status(201).json(comment);
   } catch (err: any) {
+    console.error("Error creating comment:", err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -63,7 +81,6 @@ router.delete("/:courseId/comments/:commentId", protect, async (req, res) => {
 // ── RATINGS ───────────────────────────────────────────────────────────────
 
 // GET /api/courses/:courseId/ratings/course
-// Returns the course-level average (average of all lesson ratings in this course)
 router.get("/:courseId/ratings/course", protect, async (req, res) => {
   try {
     const ratings = await Rating.find({ courseId: req.params.courseId });
@@ -81,7 +98,6 @@ router.get("/:courseId/ratings/course", protect, async (req, res) => {
 });
 
 // GET /api/courses/:courseId/ratings/lesson/:lessonId
-// Returns rating data for a specific lesson (including the current user's rating)
 router.get("/:courseId/ratings/lesson/:lessonId", protect, async (req, res) => {
   try {
     const ratings = await Rating.find({
@@ -106,48 +122,49 @@ router.get("/:courseId/ratings/lesson/:lessonId", protect, async (req, res) => {
 
 // POST /api/courses/:courseId/ratings/lesson/:lessonId  (upsert or delete if same stars)
 router.post("/:courseId/ratings/lesson/:lessonId", protect, async (req, res) => {
-    try {
-      const user = (req as any).user;
-      const { stars } = req.body;
-      if (!stars || stars < 1 || stars > 5)
-        return res.status(400).json({ message: "Stars must be 1-5" });
-  
-      const existing = await Rating.findOne({
-        courseId: req.params.courseId,
-        lessonId: req.params.lessonId,
-        studentId: user.id,
-      });
-  
-      let myStars: number | null = null;
-  
-      if (existing && existing.stars === stars) {
-        // Same rating clicked again → toggle off (delete)
-        await existing.deleteOne();
-      } else {
-        const studentName = await getFullName(user.id);
-        await Rating.findOneAndUpdate(
-          { courseId: req.params.courseId, lessonId: req.params.lessonId, studentId: user.id },
-          { courseId: req.params.courseId, lessonId: req.params.lessonId, studentId: user.id, studentName, stars },
-          { new: true, upsert: true }
-        );
-        myStars = stars;
-      }
-  
-      const lessonRatings = await Rating.find({ courseId: req.params.courseId, lessonId: req.params.lessonId });
-      const lessonAvg = lessonRatings.length === 0 ? 0 : lessonRatings.reduce((s, r) => s + r.stars, 0) / lessonRatings.length;
-  
-      const allRatings = await Rating.find({ courseId: req.params.courseId });
-      const courseAvg = allRatings.length === 0 ? 0 : allRatings.reduce((s, r) => s + r.stars, 0) / allRatings.length;
-  
-      res.json({
-        lessonAverage: Math.round(lessonAvg * 10) / 10,
-        lessonCount: lessonRatings.length,
-        myStars,   // null when deleted
-        courseAverage: Math.round(courseAvg * 10) / 10,
-        courseCount: allRatings.length,
-      });
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
+  try {
+    const user = (req as any).user;
+    const { stars } = req.body;
+    if (!stars || stars < 1 || stars > 5)
+      return res.status(400).json({ message: "Stars must be 1-5" });
+
+    const existing = await Rating.findOne({
+      courseId: req.params.courseId,
+      lessonId: req.params.lessonId,
+      studentId: user.id,
+    });
+
+    let myStars: number | null = null;
+
+    if (existing && existing.stars === stars) {
+      // Same rating clicked again → toggle off (delete)
+      await existing.deleteOne();
+    } else {
+      const studentName = await getFullName(user.id);
+      await Rating.findOneAndUpdate(
+        { courseId: req.params.courseId, lessonId: req.params.lessonId, studentId: user.id },
+        { courseId: req.params.courseId, lessonId: req.params.lessonId, studentId: user.id, studentName, stars },
+        { new: true, upsert: true }
+      );
+      myStars = stars;
     }
-  });
+
+    const lessonRatings = await Rating.find({ courseId: req.params.courseId, lessonId: req.params.lessonId });
+    const lessonAvg = lessonRatings.length === 0 ? 0 : lessonRatings.reduce((s, r) => s + r.stars, 0) / lessonRatings.length;
+
+    const allRatings = await Rating.find({ courseId: req.params.courseId });
+    const courseAvg = allRatings.length === 0 ? 0 : allRatings.reduce((s, r) => s + r.stars, 0) / allRatings.length;
+
+    res.json({
+      lessonAverage: Math.round(lessonAvg * 10) / 10,
+      lessonCount: lessonRatings.length,
+      myStars,
+      courseAverage: Math.round(courseAvg * 10) / 10,
+      courseCount: allRatings.length,
+    });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 export default router;
