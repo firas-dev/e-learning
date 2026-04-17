@@ -14,6 +14,7 @@ import CourseCatalog from './pages/CourseCatalog';
 import TeacherProfile from './pages/TeacherProfile';
 import StudentProfile from './pages/StudentProfile';
 import PDFViewer from './pages/PdfViewer';
+import Messaging from './pages/Messaging';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -163,6 +164,7 @@ function AppContent() {
       {currentPage === 'privacy' && <PrivacySettings />}
       {currentPage === 'profile' && user?.role === 'teacher' && <TeacherProfile />}
       {currentPage === 'profile' && user?.role === 'student' && <StudentProfile />}
+      {currentPage === 'messages' && <Messaging />}
     </NavigationProvider>
   );
 }

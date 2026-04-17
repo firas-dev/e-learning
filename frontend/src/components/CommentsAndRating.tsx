@@ -118,6 +118,53 @@ export function LessonRatingWidget({ courseId, lessonId, onCourseUpdate }: Lesso
   );
 }
 
+// ── Single reply bubble ───────────────────────────────────────────────────
+function ReplyBubble({
+  reply,
+  currentUserId,
+  currentUserRole,
+  onDelete,
+}: {
+  reply: Comment;
+  currentUserId: string;
+  currentUserRole: string;
+  onDelete: (id: string, parentId?: string | null) => void;
+}) {
+  const isOwner = reply.studentId === currentUserId;
+  const canDelete = isOwner || currentUserRole === 'teacher' || currentUserRole === 'admin';
+
+  const formatDate = (iso: string) =>
+    new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+  return (
+    <div className="flex gap-2.5">
+      <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs flex-shrink-0 mt-0.5">
+        {reply.studentName?.[0]?.toUpperCase() || 'U'}
+      </div>
+      <div className="flex-1 min-w-0 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap mb-0.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-blue-900">{reply.studentName}</span>
+            <span className="text-xs text-gray-400">{formatDate(reply.createdAt)}</span>
+          </div>
+          {canDelete && (
+            <button
+              onClick={() => onDelete(reply._id, reply.parentId)}
+              className="p-0.5 text-gray-300 hover:text-red-400 transition-colors"
+              title="Delete reply"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+        <p className="text-sm text-gray-700 whitespace-pre-line break-words leading-relaxed">
+          {reply.text}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ── Single comment + its replies ─────────────────────────────────────────
 function CommentItem({
   comment,
@@ -137,12 +184,15 @@ function CommentItem({
   const [showReplyBox, setShowReplyBox] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [submittingReply, setSubmittingReply] = useState(false);
-  const [showReplies, setShowReplies] = useState(true);
+  const [showAllReplies, setShowAllReplies] = useState(false);
 
   const isOwner = comment.studentId === currentUserId;
   const canDelete = isOwner || currentUserRole === 'teacher' || currentUserRole === 'admin';
   const canReply = currentUserRole === 'teacher' || currentUserRole === 'student';
   const replies = comment.replies || [];
+  const firstReply = replies[0];
+  const remainingReplies = replies.slice(1);
+  const hasMoreReplies = remainingReplies.length > 0;
 
   const formatDate = (iso: string) =>
     new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -155,15 +205,11 @@ function CommentItem({
       await onReply(comment._id, replyText.trim());
       setReplyText('');
       setShowReplyBox(false);
-      setShowReplies(true);
+      setShowAllReplies(true);
     } finally {
       setSubmittingReply(false);
     }
   };
-
-  const isTeacherReply = (c: Comment) => false; // placeholder; backend doesn't expose role here
-  // We detect teacher replies by checking if the name differs from typical student names
-  // For now we just show all replies the same way — the teacher's name distinguishes them
 
   return (
     <div className={depth > 0 ? 'ml-8 border-l-2 border-blue-100 pl-4' : ''}>
@@ -228,30 +274,40 @@ function CommentItem({
         </div>
       </div>
 
-      {/* Replies */}
+      {/* Replies section — shown directly under the comment */}
       {replies.length > 0 && depth === 0 && (
-        <div className="mt-3 ml-11">
-          <button
-            onClick={() => setShowReplies((v) => !v)}
-            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 mb-2 transition-colors"
-          >
-            {showReplies ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
-          </button>
-          {showReplies && (
-            <div className="space-y-3">
-              {replies.map((reply) => (
-                <CommentItem
-                  key={reply._id}
-                  comment={reply}
-                  currentUserId={currentUserId}
-                  currentUserRole={currentUserRole}
-                  onDelete={onDelete}
-                  onReply={onReply}
-                  depth={1}
-                />
-              ))}
-            </div>
+        <div className="mt-3 ml-11 space-y-2">
+          {/* Always show the first reply */}
+          <ReplyBubble
+            reply={firstReply}
+            currentUserId={currentUserId}
+            currentUserRole={currentUserRole}
+            onDelete={onDelete}
+          />
+
+          {/* Show remaining replies when expanded */}
+          {showAllReplies && remainingReplies.map((reply) => (
+            <ReplyBubble
+              key={reply._id}
+              reply={reply}
+              currentUserId={currentUserId}
+              currentUserRole={currentUserRole}
+              onDelete={onDelete}
+            />
+          ))}
+
+          {/* Show more / show less button */}
+          {hasMoreReplies && (
+            <button
+              onClick={() => setShowAllReplies((v) => !v)}
+              className="flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 font-medium transition-colors mt-1 pl-1"
+            >
+              {showAllReplies ? (
+                <><ChevronUp className="w-3.5 h-3.5" /> Show less</>
+              ) : (
+                <><ChevronDown className="w-3.5 h-3.5" /> Show {remainingReplies.length} more {remainingReplies.length === 1 ? 'reply' : 'replies'}</>
+              )}
+            </button>
           )}
         </div>
       )}
@@ -264,7 +320,7 @@ interface CommentsProps {
   courseId: string;
   lessonId?: string;
   onCourseRatingUpdate?: (avg: number, cnt: number) => void;
-  readOnlyMode?: boolean; // teacher: can reply/delete but not post new top-level unless also enrolled
+  readOnlyMode?: boolean;
 }
 
 export default function CommentsAndRating({ courseId, lessonId, onCourseRatingUpdate, readOnlyMode }: CommentsProps) {

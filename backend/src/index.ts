@@ -15,7 +15,8 @@ import { createServer } from "http";
 import enrollmentRoutes from "./routes/enrollmentRoutes";
 import feedbackRoutes from "./routes/feedbackRoutes";
 import profileRoutes from "./routes/profileRoutes";
-
+import messageRoutes from "./routes/messageRoutes";
+import preferencesRoutes from "./routes/preferences";
 
 
 connectDB();
@@ -74,6 +75,8 @@ app.use("/api/enrollments", enrollmentRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/courses", feedbackRoutes);
 app.use("/api/profile", profileRoutes);
+app.use("/api/messages", messageRoutes);
+app.use("/api/preferences", preferencesRoutes);
 
 
 // Test route
