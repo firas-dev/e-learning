@@ -16,17 +16,28 @@ import {
   Eye,
   Users,
   BookOpen,
+  ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import CommentsAndRating, { CourseRatingInline, LessonRatingWidget } from '../components/CommentsAndRating';
+import axios from 'axios';
+
+const API = 'http://localhost:5000/api';
+
+interface TeacherInfo {
+  _id: string;
+  fullName: string;
+  email: string;
+}
 
 interface RecordedCourseProps {
   courseId: string;
   courseTitle: string;
   onOpenPDF?: (url: string, fileName: string) => void;
+  onViewTeacherProfile?: (teacherId: string) => void;
 }
 
-export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: RecordedCourseProps) {
+export default function RecordedCourse({ courseId, courseTitle, onOpenPDF, onViewTeacherProfile }: RecordedCourseProps) {
   const { user } = useAuth();
   const { setCurrentPage } = useNavigation();
   const { lessons, loading } = useLessons(courseId);
@@ -34,7 +45,6 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: Rec
   const isTeacher = user?.role === 'teacher';
   const isStudent = user?.role === 'student';
 
-  // Progress tracking — only for students
   const {
     completedIds,
     progressPercent,
@@ -46,6 +56,16 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: Rec
   const { pause: pauseTimer, resume: resumeTimer } = useLearningTimer(isStudent ? courseId : undefined);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Fetch teacher info for this course
+  const [teacherInfo, setTeacherInfo] = useState<TeacherInfo | null>(null);
+
+  useEffect(() => {
+    if (!isStudent || !courseId) return;
+    axios.get(`${API}/courses/${courseId}/teacher`)
+      .then((res) => setTeacherInfo(res.data))
+      .catch(() => {});
+  }, [courseId, isStudent]);
 
   useEffect(() => {
     if (!isStudent) return;
@@ -146,7 +166,7 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: Rec
             )}
           </div>
 
-          {/* Course Rating — show for everyone */}
+          {/* Course Rating */}
           <div className="flex-shrink-0 flex flex-col gap-1.5 bg-white border border-gray-200 shadow-sm px-3 py-1.5 rounded-lg">
             <div className="flex items-center gap-2">
               <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
@@ -160,7 +180,29 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: Rec
           </div>
         </div>
 
-        {/* Teacher info banner */}
+        {/* Teacher info banner — students only */}
+        {isStudent && teacherInfo && (
+          <div className="mb-6 p-4 bg-white border border-gray-200 rounded-xl flex items-center gap-4 shadow-sm">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+              {teacherInfo.fullName?.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || 'T'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-gray-500">Instructor</p>
+              <p className="font-semibold text-gray-900">{teacherInfo.fullName}</p>
+            </div>
+            {onViewTeacherProfile && (
+              <button
+                onClick={() => onViewTeacherProfile(teacherInfo._id)}
+                className="flex items-center gap-1.5 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-sm font-medium transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                View profile
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Teacher info banner — for teacher role */}
         {isTeacher && (
           <div className="mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex items-start gap-3">
             <Users className="w-5 h-5 text-indigo-500 flex-shrink-0 mt-0.5" />
@@ -217,7 +259,7 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: Rec
                 </div>
               </div>
 
-              {/* Emotion Timeline — students only */}
+              {/* Emotion Timeline */}
               {cameraEnabled && isStudent && (
                 <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
                   <h3 className="text-lg font-bold text-gray-900 mb-4">Emotion Timeline</h3>
@@ -242,7 +284,6 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: Rec
                         <h3 className="text-lg font-bold text-gray-900 mb-2">About This Lesson</h3>
                         <p className="text-gray-600 leading-relaxed">{currentLesson.description}</p>
                       </div>
-                      {/* Lesson rating — students only */}
                       {isStudent && (
                         <div className="flex-shrink-0 border-l border-gray-100 pl-6">
                           <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1">
@@ -257,7 +298,6 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: Rec
                           )}
                         </div>
                       )}
-                      {/* Teacher sees lesson rating stats read-only */}
                       {isTeacher && (
                         <div className="flex-shrink-0 border-l border-gray-100 pl-6">
                           <p className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-1">
@@ -376,6 +416,29 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: Rec
                 </div>
               )}
 
+              {/* Teacher card — students only */}
+              {isStudent && teacherInfo && onViewTeacherProfile && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                  <h3 className="text-sm font-bold text-gray-900 mb-4">About the instructor</h3>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white font-bold text-base flex-shrink-0">
+                      {teacherInfo.fullName?.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || 'T'}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-900">{teacherInfo.fullName}</p>
+                      <p className="text-xs text-gray-500">{teacherInfo.email}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => onViewTeacherProfile(teacherInfo._id)}
+                    className="w-full flex items-center justify-center gap-2 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    View instructor profile
+                  </button>
+                </div>
+              )}
+
               {/* Teacher stats panel */}
               {isTeacher && (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -446,7 +509,7 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF }: Rec
                 </div>
               </div>
 
-              {/* AI Monitoring — students only */}
+              {/* AI Monitoring */}
               {cameraEnabled && isStudent && (
                 <div className="bg-green-50 border-2 border-green-500 rounded-xl shadow-sm p-6">
                   <h3 className="text-lg font-bold text-green-900 mb-2">AI Monitoring Active</h3>

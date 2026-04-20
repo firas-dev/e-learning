@@ -12,6 +12,7 @@ import PrivacySettings from './pages/PrivacySettings';
 import CourseLessons from './pages/CourseLessons';
 import CourseCatalog from './pages/CourseCatalog';
 import TeacherProfile from './pages/TeacherProfile';
+import TeacherPublicProfile from './pages/TeacherPublicProfile';
 import StudentProfile from './pages/StudentProfile';
 import PDFViewer from './pages/PdfViewer';
 import Messaging from './pages/Messaging';
@@ -40,6 +41,11 @@ function AppContent() {
     return stored ? JSON.parse(stored) : null;
   });
 
+  // Teacher public profile — stores the teacher's userId
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(() => {
+    return sessionStorage.getItem('selectedTeacherId') || null;
+  });
+
   const [isResetPage] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.has('token') && window.location.pathname === '/reset-password';
@@ -63,6 +69,17 @@ function AppContent() {
     sessionStorage.setItem('selectedPDF', JSON.stringify(pdf));
     setSelectedPDF(pdf);
     handleSetCurrentPage('pdf-viewer');
+  };
+
+  const handleViewTeacherProfile = (teacherId: string) => {
+    sessionStorage.setItem('selectedTeacherId', teacherId);
+    setSelectedTeacherId(teacherId);
+    handleSetCurrentPage('teacher-public-profile');
+  };
+
+  const handleGoToMessages = (teacherId?: string) => {
+    handleSetCurrentPage('messages');
+    // Could pre-select conversation — for now just opens messages
   };
 
   if (loading) {
@@ -91,6 +108,7 @@ function AppContent() {
     sessionStorage.removeItem('currentPage');
     sessionStorage.removeItem('selectedCourse');
     sessionStorage.removeItem('selectedPDF');
+    sessionStorage.removeItem('selectedTeacherId');
     return <Login />;
   }
 
@@ -123,7 +141,6 @@ function AppContent() {
     );
   }
 
-  // Both students AND teachers can open the recorded course viewer
   if (currentPage === 'recorded-course' && selectedCourse) {
     return (
       <NavigationProvider currentPage={currentPage} setCurrentPage={handleSetCurrentPage}>
@@ -131,6 +148,19 @@ function AppContent() {
           courseId={selectedCourse.id}
           courseTitle={selectedCourse.title}
           onOpenPDF={handleOpenPDF}
+          onViewTeacherProfile={user.role === 'student' ? handleViewTeacherProfile : undefined}
+        />
+      </NavigationProvider>
+    );
+  }
+
+  // Teacher public profile — accessible to students only
+  if (currentPage === 'teacher-public-profile' && selectedTeacherId && user.role === 'student') {
+    return (
+      <NavigationProvider currentPage={currentPage} setCurrentPage={handleSetCurrentPage}>
+        <TeacherPublicProfile
+          teacherId={selectedTeacherId}
+          onStartConversation={(tid) => handleGoToMessages(tid)}
         />
       </NavigationProvider>
     );
@@ -151,16 +181,15 @@ function AppContent() {
         <TeacherDashboard
           onOpenCourse={(id, title, type) => {
             handleSetSelectedCourse({ id: String(id), title, type });
-            // Teachers: live → live-class, recorded → recorded-course (preview) OR course-lessons (edit)
-            // We keep course-lessons for editing (existing behaviour from TeacherDashboard click)
-            // but if the teacher wants to preview, they now go to recorded-course
             handleSetCurrentPage(type === 'live' ? 'live-class' : 'recorded-course');
           }}
         />
       )}
 
       {currentPage === 'dashboard' && user?.role === 'admin' && <AdminDashboard />}
-      {currentPage === 'catalog' && user?.role === 'student' && <CourseCatalog />}
+      {currentPage === 'catalog' && user?.role === 'student' && (
+        <CourseCatalog onViewTeacherProfile={handleViewTeacherProfile} />
+      )}
       {currentPage === 'privacy' && <PrivacySettings />}
       {currentPage === 'profile' && user?.role === 'teacher' && <TeacherProfile />}
       {currentPage === 'profile' && user?.role === 'student' && <StudentProfile />}

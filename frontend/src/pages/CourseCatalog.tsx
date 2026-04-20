@@ -5,11 +5,15 @@ import Navbar from '../components/Navbar';
 import {
   Video, Play, Clock, Calendar, ArrowLeft,
   Loader2, CheckCircle, User, Users,
-  Search, ChevronLeft, ChevronRight, X,
+  Search, ChevronLeft, ChevronRight, X, ExternalLink,
 } from 'lucide-react';
 import StarBadge from '../components/StarBadge';
 
-export default function CourseCatalog() {
+interface CourseCatalogProps {
+  onViewTeacherProfile?: (teacherId: string) => void;
+}
+
+export default function CourseCatalog({ onViewTeacherProfile }: CourseCatalogProps) {
   const { setCurrentPage } = useNavigation();
   const {
     courses, enrolledIds, loading, enrolling,
@@ -44,7 +48,6 @@ export default function CourseCatalog() {
 
         {/* Search & Filter Bar */}
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
-          {/* Search */}
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -64,7 +67,6 @@ export default function CourseCatalog() {
             )}
           </div>
 
-          {/* Type filter */}
           <div className="flex gap-2">
             {(['all', 'recorded', 'live'] as const).map((t) => (
               <button
@@ -145,10 +147,22 @@ export default function CourseCatalog() {
                         <span className="flex items-center gap-1">
                           <Clock className="w-3 h-3" />{course.duration}h
                         </span>
-                        <span className="flex items-center gap-1">
-                          <User className="w-3 h-3" />
-                          {course.teacherId?.fullName || 'Teacher'}
-                        </span>
+                        {/* Teacher — clickable if onViewTeacherProfile is provided */}
+                        {onViewTeacherProfile && course.teacherId ? (
+                          <button
+                            onClick={() => onViewTeacherProfile(String(course.teacherId._id))}
+                            className="flex items-center gap-1 text-blue-600 hover:text-blue-700 hover:underline transition-colors"
+                          >
+                            <User className="w-3 h-3" />
+                            {course.teacherId.fullName || 'Teacher'}
+                            <ExternalLink className="w-2.5 h-2.5" />
+                          </button>
+                        ) : (
+                          <span className="flex items-center gap-1">
+                            <User className="w-3 h-3" />
+                            {course.teacherId?.fullName || 'Teacher'}
+                          </span>
+                        )}
                         <span className="flex items-center gap-1">
                           <Users className="w-3 h-3" />
                           {course.enrollmentCount} student{course.enrollmentCount !== 1 ? 's' : ''}

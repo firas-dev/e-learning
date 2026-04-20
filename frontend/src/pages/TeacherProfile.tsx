@@ -4,11 +4,12 @@ import { useNavigation } from '../contexts/NavigationContext';
 import { useTeacherProfile } from '../hooks/useProfile';
 import Navbar from '../components/Navbar';
 import StarBadge from '../components/StarBadge';
+import EditProfileModal from '../components/EditProfileModal';
 import {
   ArrowLeft, BookOpen, Users, TrendingUp, Clock,
   Star, Mail, Calendar, Globe, CheckCircle,
   Video, Play, MessageSquare, Loader2, FileText,
-  ChevronDown, ChevronUp, Award,
+  ChevronDown, ChevronUp, Award, Pencil,
 } from 'lucide-react';
 
 export default function TeacherProfile() {
@@ -17,6 +18,11 @@ export default function TeacherProfile() {
   const { data, loading, error } = useTeacherProfile(user?._id);
   const [showAllCourses, setShowAllCourses] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  // Local state for optimistic name/email updates
+  const [localName, setLocalName] = useState<string | null>(null);
+  const [localEmail, setLocalEmail] = useState<string | null>(null);
 
   if (loading) {
     return (
@@ -42,7 +48,10 @@ export default function TeacherProfile() {
 
   const { teacher, courses, stats, recentComments } = data;
 
-  const initials = teacher.fullName
+  const displayName = localName ?? teacher.fullName;
+  const displayEmail = localEmail ?? teacher.email;
+
+  const initials = displayName
     ?.split(' ')
     .map((n) => n[0])
     .join('')
@@ -70,6 +79,17 @@ export default function TeacherProfile() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
 
+      {/* Edit Modal */}
+      {showEditModal && (
+        <EditProfileModal
+          onClose={() => setShowEditModal(false)}
+          onSuccess={({ fullName, email }) => {
+            setLocalName(fullName);
+            setLocalEmail(email);
+          }}
+        />
+      )}
+
       {/* Hero banner */}
       <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -89,12 +109,12 @@ export default function TeacherProfile() {
             {/* Info */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 flex-wrap mb-1">
-                <h1 className="text-3xl font-bold">{teacher.fullName}</h1>
+                <h1 className="text-3xl font-bold">{displayName}</h1>
                 <span className="flex items-center gap-1 bg-green-400/20 text-green-200 text-xs px-3 py-1 rounded-full border border-green-300/30">
                   <CheckCircle className="w-3 h-3" /> Verified instructor
                 </span>
               </div>
-              <p className="text-blue-200 text-sm mb-3">{teacher.email}</p>
+              <p className="text-blue-200 text-sm mb-3">{displayEmail}</p>
               <div className="flex items-center gap-5 text-sm text-blue-200 flex-wrap">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-4 h-4" /> Joined {joinedDate}
@@ -108,6 +128,15 @@ export default function TeacherProfile() {
                 </span>
               </div>
             </div>
+
+            {/* Edit button */}
+            <button
+              onClick={() => setShowEditModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-white/15 hover:bg-white/25 border border-white/30 text-white rounded-xl text-sm font-medium transition-colors flex-shrink-0"
+            >
+              <Pencil className="w-4 h-4" />
+              Edit Profile
+            </button>
           </div>
 
           {/* Stats strip */}
@@ -136,13 +165,21 @@ export default function TeacherProfile() {
           <div className="space-y-6">
             {/* Contact */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <h2 className="font-bold text-gray-900 mb-4">Contact info</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-bold text-gray-900">Contact info</h2>
+                <button
+                  onClick={() => setShowEditModal(true)}
+                  className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  <Pencil className="w-3 h-3" /> Edit
+                </button>
+              </div>
               <div className="space-y-3">
                 <div className="flex items-center gap-3 text-sm">
                   <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
                     <Mail className="w-4 h-4 text-blue-600" />
                   </div>
-                  <span className="text-gray-700 truncate">{teacher.email}</span>
+                  <span className="text-gray-700 truncate">{displayEmail}</span>
                 </div>
                 <div className="flex items-center gap-3 text-sm">
                   <div className="w-8 h-8 bg-green-50 rounded-lg flex items-center justify-center flex-shrink-0">

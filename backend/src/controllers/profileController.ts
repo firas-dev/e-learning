@@ -5,6 +5,7 @@ import Enrollment from "../models/Enrollment";
 import Lesson from "../models/Lesson";
 import Rating from "../models/Rating";
 import Comment from "../models/Comment";
+import bcrypt from "bcryptjs";
 
 // ─── GET /api/profile/teacher/:userId ────────────────────────────────────────
 export const getTeacherProfile = async (req: Request, res: Response) => {
@@ -16,10 +17,8 @@ export const getTeacherProfile = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Teacher not found." });
     }
 
-    // All courses by this teacher
     const courses = await Course.find({ teacherId: userId }).sort({ createdAt: -1 });
 
-    // Enrich each course with enrollment count, lesson count, average rating
     const enrichedCourses = await Promise.all(
       courses.map(async (course) => {
         const [enrollmentCount, lessonCount, ratings] = await Promise.all([
@@ -41,7 +40,6 @@ export const getTeacherProfile = async (req: Request, res: Response) => {
       })
     );
 
-    // Aggregate stats
     const allCourseIds = courses.map((c) => c._id);
     const totalStudents = await Enrollment.countDocuments({ courseId: { $in: allCourseIds } });
     const allEnrollments = await Enrollment.find({ courseId: { $in: allCourseIds } });
@@ -59,7 +57,6 @@ export const getTeacherProfile = async (req: Request, res: Response) => {
         ? Math.round((allRatings.reduce((s, r) => s + r.stars, 0) / allRatings.length) * 10) / 10
         : 0;
 
-    // Recent comments/reviews left on teacher's courses
     const recentComments = await Comment.find({ courseId: { $in: allCourseIds } })
       .sort({ createdAt: -1 })
       .limit(5);
@@ -97,7 +94,6 @@ export const getStudentProfile = async (req: Request, res: Response) => {
     const { userId } = req.params;
     const requesterId = (req as any).user.id;
 
-    // Only the student themselves or admin can view full profile
     if (requesterId !== userId) {
       const requester = await User.findById(requesterId).select("role");
       if (!requester || requester.role !== "admin") {
@@ -110,7 +106,6 @@ export const getStudentProfile = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Student not found." });
     }
 
-    // All enrollments with course details
     const enrollments = await Enrollment.find({ studentId: userId })
       .populate("courseId")
       .sort({ lastAccessed: -1 });
@@ -140,7 +135,6 @@ export const getStudentProfile = async (req: Request, res: Response) => {
         };
       });
 
-    // Stats
     const totalLearningTime = enrollments.reduce((s, e) => s + e.learningTime, 0);
     const completed = enrollments.filter((e) => e.progress === 100).length;
     const inProgress = enrollments.filter((e) => e.progress > 0 && e.progress < 100).length;
@@ -149,10 +143,7 @@ export const getStudentProfile = async (req: Request, res: Response) => {
         ? Math.round(enrollments.reduce((s, e) => s + e.progress, 0) / enrollments.length)
         : 0;
 
-    // Ratings the student has submitted
     const submittedRatings = await Rating.find({ studentId: userId });
-
-    // Comments the student has posted
     const recentComments = await Comment.find({ studentId: userId })
       .sort({ createdAt: -1 })
       .limit(5);
@@ -185,12 +176,10 @@ export const getStudentProfile = async (req: Request, res: Response) => {
 };
 
 // ─── GET /api/profile/me ─────────────────────────────────────────────────────
-// Shortcut: returns the current user's own profile based on their role
 export const getMyProfile = async (req: Request, res: Response) => {
   const userId = (req as any).user.id;
   const role = (req as any).user.role;
 
-  // Re-use the existing handlers by faking req.params
   (req as any).params = { userId };
 
   if (role === "teacher") {
@@ -200,5 +189,59 @@ export const getMyProfile = async (req: Request, res: Response) => {
   } else {
     const user = await User.findById(userId).select("-password");
     return res.json({ user });
+  }
+};
+
+// ─── PATCH /api/profile/me ────────────────────────────────────────────────────
+export const updateMyProfile = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+    const { fullName, email, currentPassword, newPassword } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found." });
+
+    // ── Validate & update fullName ──
+    if (fullName !== undefined) {
+      const trimmed = fullName.trim();
+      if (!trimmed) return res.status(400).json({ message: "Full name cannot be empty." });
+      user.fullName = trimmed;
+    }
+
+    // ── Validate & update email ──
+    if (email !== undefined) {
+      const trimmed = email.trim().toLowerCase();
+      if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+        return res.status(400).json({ message: "Invalid email address." });
+      }
+      const existing = await User.findOne({ email: trimmed, _id: { $ne: userId } });
+      if (existing) return res.status(400).json({ message: "Email already in use." });
+      user.email = trimmed;
+    }
+
+    // ── Validate & update password ──
+    if (newPassword !== undefined) {
+      if (!currentPassword) {
+        return res.status(400).json({ message: "Current password is required to set a new password." });
+      }
+      const isMatch = await bcrypt.compare(currentPassword, user.password);
+      if (!isMatch) return res.status(400).json({ message: "Current password is incorrect." });
+      if (newPassword.length < 8) {
+        return res.status(400).json({ message: "New password must be at least 8 characters." });
+      }
+      user.password = await bcrypt.hash(newPassword, 10);
+    }
+
+    await user.save();
+
+    res.json({
+      _id: user._id,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.role,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
   }
 };

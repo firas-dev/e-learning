@@ -4,11 +4,12 @@ import { useNavigation } from '../contexts/NavigationContext';
 import { useStudentProfile } from '../hooks/useProfile';
 import Navbar from '../components/Navbar';
 import EmotionIndicator from '../components/EmotionIndicator';
+import EditProfileModal from '../components/EditProfileModal';
 import {
   ArrowLeft, BookOpen, Clock, TrendingUp, CheckCircle,
   Mail, Calendar, Play, Video, Loader2, ChevronDown,
   ChevronUp, MessageSquare, Award, Heart, Zap, Brain,
-  BarChart2,
+  BarChart2, Pencil,
 } from 'lucide-react';
 
 export default function StudentProfile() {
@@ -17,6 +18,11 @@ export default function StudentProfile() {
   const { data, loading, error } = useStudentProfile(user?._id);
   const [showAllEnrollments, setShowAllEnrollments] = useState(false);
   const [activeTab, setActiveTab] = useState<'courses' | 'activity'>('courses');
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  // Optimistic local updates
+  const [localName, setLocalName] = useState<string | null>(null);
+  const [localEmail, setLocalEmail] = useState<string | null>(null);
 
   if (loading) {
     return (
@@ -42,7 +48,10 @@ export default function StudentProfile() {
 
   const { student, enrollments, stats, recentComments } = data;
 
-  const initials = student.fullName
+  const displayName = localName ?? student.fullName;
+  const displayEmail = localEmail ?? student.email;
+
+  const initials = displayName
     ?.split(' ')
     .map((n) => n[0])
     .join('')
@@ -55,13 +64,23 @@ export default function StudentProfile() {
   });
 
   const visibleEnrollments = showAllEnrollments ? enrollments : enrollments.slice(0, 4);
-
   const completedEnrollments = enrollments.filter((e) => e.progress === 100);
   const inProgressEnrollments = enrollments.filter((e) => e.progress > 0 && e.progress < 100);
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
+
+      {/* Edit Modal */}
+      {showEditModal && (
+        <EditProfileModal
+          onClose={() => setShowEditModal(false)}
+          onSuccess={({ fullName, email }) => {
+            setLocalName(fullName);
+            setLocalEmail(email);
+          }}
+        />
+      )}
 
       {/* Hero */}
       <div className="bg-gradient-to-br from-teal-600 via-emerald-600 to-cyan-700 text-white">
@@ -80,12 +99,12 @@ export default function StudentProfile() {
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-3 flex-wrap mb-1">
-                <h1 className="text-3xl font-bold">{student.fullName}</h1>
+                <h1 className="text-3xl font-bold">{displayName}</h1>
                 <span className="bg-teal-400/20 text-teal-100 text-xs px-3 py-1 rounded-full border border-teal-300/30">
                   Student
                 </span>
               </div>
-              <p className="text-teal-200 text-sm mb-3">{student.email}</p>
+              <p className="text-teal-200 text-sm mb-3">{displayEmail}</p>
               <div className="flex items-center gap-5 text-sm text-teal-200 flex-wrap">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-4 h-4" /> Joined {joinedDate}
@@ -96,6 +115,15 @@ export default function StudentProfile() {
                 </span>
               </div>
             </div>
+
+            {/* Edit button */}
+            <button
+              onClick={() => setShowEditModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-white/15 hover:bg-white/25 border border-white/30 text-white rounded-xl text-sm font-medium transition-colors flex-shrink-0"
+            >
+              <Pencil className="w-4 h-4" />
+              Edit Profile
+            </button>
           </div>
 
           {/* Stats strip */}
@@ -125,12 +153,20 @@ export default function StudentProfile() {
 
             {/* Contact */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <h2 className="font-bold text-gray-900 mb-4">Contact info</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-bold text-gray-900">Contact info</h2>
+                <button
+                  onClick={() => setShowEditModal(true)}
+                  className="flex items-center gap-1.5 text-xs text-teal-600 hover:text-teal-700 font-medium"
+                >
+                  <Pencil className="w-3 h-3" /> Edit
+                </button>
+              </div>
               <div className="flex items-center gap-3 text-sm">
                 <div className="w-8 h-8 bg-teal-50 rounded-lg flex items-center justify-center flex-shrink-0">
                   <Mail className="w-4 h-4 text-teal-600" />
                 </div>
-                <span className="text-gray-700 truncate">{student.email}</span>
+                <span className="text-gray-700 truncate">{displayEmail}</span>
               </div>
             </div>
 
@@ -138,7 +174,6 @@ export default function StudentProfile() {
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
               <h2 className="font-bold text-gray-900 mb-4">Learning progress</h2>
               <div className="space-y-4">
-                {/* Overall */}
                 <div>
                   <div className="flex justify-between text-sm mb-1">
                     <span className="text-gray-600">Overall</span>
@@ -290,7 +325,6 @@ export default function StudentProfile() {
                                 key={enrollment.id}
                                 className="flex items-start gap-4 p-4 border border-gray-100 rounded-xl hover:border-teal-200 hover:shadow-sm transition-all"
                               >
-                                {/* Thumb */}
                                 <div className={`w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 ${
                                   enrollment.course.type === 'live'
                                     ? 'bg-gradient-to-br from-red-500 to-orange-500'
