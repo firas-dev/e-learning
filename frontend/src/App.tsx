@@ -16,6 +16,8 @@ import TeacherPublicProfile from './pages/TeacherPublicProfile';
 import StudentProfile from './pages/StudentProfile';
 import PDFViewer from './pages/PdfViewer';
 import Messaging from './pages/Messaging';
+import TeacherPrivateRooms from './pages/TeacherPrivateRooms';
+import StudentPrivateRooms from './pages/StudentPrivateRooms';
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -194,6 +196,12 @@ function AppContent() {
       {currentPage === 'profile' && user?.role === 'teacher' && <TeacherProfile />}
       {currentPage === 'profile' && user?.role === 'student' && <StudentProfile />}
       {currentPage === 'messages' && <Messaging />}
+      {currentPage === 'private-rooms' && user?.role === 'teacher' && (
+        <TeacherPrivateRooms />
+      )}
+      {currentPage === 'private-rooms' && user?.role === 'student' && (
+        <StudentPrivateRooms />
+      )}
     </NavigationProvider>
   );
 }

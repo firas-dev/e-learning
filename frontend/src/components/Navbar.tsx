@@ -3,6 +3,7 @@ import { useNavigation } from '../contexts/NavigationContext';
 import { BookOpen, LogOut, Settings, User, MessageCircle } from 'lucide-react';
 import NotificationBell from './NotificationBell';
 import { useMessages } from '../hooks/useMessages';
+import InvitationBell from './InvitationBell';
 
 export default function Navbar() {
   const { user, signOut } = useAuth();
@@ -51,6 +52,7 @@ export default function Navbar() {
             <div className="flex items-center gap-2">
               {/* ✅ Bell only for students */}
               {user?.role === 'student' && <NotificationBell />}
+              {user?.role === 'student' && <InvitationBell />}
 
               {/* ✅ Messages button */}
               <button

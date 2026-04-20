@@ -17,6 +17,7 @@ import feedbackRoutes from "./routes/feedbackRoutes";
 import profileRoutes from "./routes/profileRoutes";
 import messageRoutes from "./routes/messageRoutes";
 import preferencesRoutes from "./routes/preferences";
+import privateRoomRoutes from "./routes/privateRoomRoutes";
 
 
 connectDB();
@@ -77,6 +78,7 @@ app.use("/api/courses", feedbackRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/preferences", preferencesRoutes);
+app.use("/api/rooms", privateRoomRoutes);
 
 
 // Test route

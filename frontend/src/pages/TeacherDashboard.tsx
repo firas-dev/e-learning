@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTeacherDashboard } from '../hooks/useTeacherDashboard';
 import Navbar from '../components/Navbar';
+import { useNavigation } from '../contexts/NavigationContext';
 import {
   TrendingUp, Users, Video, AlertCircle,
   Download, Calendar, Clock, Brain, Plus, X, Trash2,
@@ -26,6 +27,7 @@ export default function TeacherDashboard({ onOpenCourse }: TeacherDashboardProps
   const { courses, totalStudents, averageEngagement, totalPages } = data;
 
   const [showModal, setShowModal] = useState(false);
+  const { setCurrentPage } = useNavigation();
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const [form, setForm] = useState({
@@ -487,6 +489,11 @@ export default function TeacherDashboard({ onOpenCourse }: TeacherDashboardProps
                   className="w-full flex items-center gap-2 p-3 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm font-medium"
                 >
                   <Calendar className="w-4 h-4" /> Schedule Session
+                </button>
+                <button
+                  onClick={() => setCurrentPage('private-rooms')}
+                  className="w-full flex items-center gap-2 p-3 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm font-medium"
+                >Private Rooms
                 </button>
               </div>
             </div>
