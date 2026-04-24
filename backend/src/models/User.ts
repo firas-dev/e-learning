@@ -6,6 +6,7 @@ export interface IUser {
   password: string;
   fullName?: string;
   role: "student" | "teacher" | "admin";
+  isBanned?: boolean;
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
   createdAt?: Date;
@@ -22,6 +23,7 @@ const userSchema = new Schema<IUser>(
       enum: ["student", "teacher", "admin"],
       default: "student",
     },
+    isBanned: { type: Boolean, default: false },
     resetPasswordToken: { type: String, default: undefined },
     resetPasswordExpires: { type: Date, default: undefined },
   },

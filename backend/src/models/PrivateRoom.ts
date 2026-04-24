@@ -5,7 +5,7 @@ export interface IPrivateRoom {
   name: string;
   description?: string;
   teacherId: mongoose.Types.ObjectId;
-  members: mongoose.Types.ObjectId[]; // accepted student IDs
+  members: mongoose.Types.ObjectId[]; 
   invitedEmails: {
     email: string;
     status: "pending" | "accepted" | "declined";

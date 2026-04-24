@@ -1,8 +1,83 @@
-import { useRef, useEffect } from 'react';
-import { Bell, X, CheckCheck } from 'lucide-react';
+import { useRef, useEffect, useState } from 'react';
+import { Bell, X, CheckCheck, CheckCircle, XCircle, Loader2, Lock } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
+import { useStudentRooms } from '../hooks/usePrivateRooms';
+import { useAuth } from '../contexts/AuthContext';
+
+// Detect if a notification is a room invitation by its title
+const isRoomInvitation = (title: string) =>
+  title.includes('Private Room Invitation');
+
+// Extract roomId from the notification's courseId field
+// (backend stores roomId in courseId for room notifications)
+function RoomInvitationActions({
+  notificationId,
+  roomId,
+  onResponded,
+}: {
+  notificationId: string;
+  roomId: string;
+  onResponded: (notificationId: string) => void;
+}) {
+  const { respond } = useStudentRooms();
+  const [responding, setResponding] = useState<'accept' | 'decline' | null>(null);
+  const [done, setDone] = useState<'accepted' | 'declined' | null>(null);
+
+  const handleRespond = async (action: 'accept' | 'decline') => {
+    setResponding(action);
+    try {
+      await respond(roomId, action);
+      setDone(action === 'accept' ? 'accepted' : 'declined');
+      // Give a moment for the user to see the result, then mark notification as read
+      setTimeout(() => onResponded(notificationId), 1200);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setResponding(null);
+    }
+  };
+
+  if (done) {
+    return (
+      <div className={`mt-2 text-xs font-semibold flex items-center gap-1 ${
+        done === 'accepted' ? 'text-green-600' : 'text-gray-500'
+      }`}>
+        {done === 'accepted'
+          ? <><CheckCircle className="w-3.5 h-3.5" /> Joined the room!</>
+          : <><XCircle className="w-3.5 h-3.5" /> Declined</>
+        }
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex gap-2 mt-2">
+      <button
+        onClick={() => handleRespond('decline')}
+        disabled={responding !== null}
+        className="flex-1 flex items-center justify-center gap-1 py-1 border border-gray-200 text-gray-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
+      >
+        {responding === 'decline'
+          ? <Loader2 className="w-3 h-3 animate-spin" />
+          : <XCircle className="w-3 h-3" />}
+        Decline
+      </button>
+      <button
+        onClick={() => handleRespond('accept')}
+        disabled={responding !== null}
+        className="flex-1 flex items-center justify-center gap-1 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
+      >
+        {responding === 'accept'
+          ? <Loader2 className="w-3 h-3 animate-spin" />
+          : <CheckCircle className="w-3 h-3" />}
+        Accept
+      </button>
+    </div>
+  );
+}
 
 export default function NotificationBell() {
+  const { user } = useAuth();
   const {
     notifications, unreadCount, open, setOpen,
     markAsRead, markAllAsRead,
@@ -10,7 +85,6 @@ export default function NotificationBell() {
 
   const ref = useRef<HTMLDivElement>(null);
 
-  // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
@@ -20,6 +94,8 @@ export default function NotificationBell() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  const isStudent = user?.role === 'student';
 
   return (
     <div className="relative" ref={ref}>
@@ -66,32 +142,55 @@ export default function NotificationBell() {
                 <p className="text-gray-400 text-sm">No notifications yet</p>
               </div>
             ) : (
-              notifications.map((n) => (
-                <div
-                  key={n._id}
-                  onClick={() => !n.read && markAsRead(n._id)}
-                  className={`px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors ${
-                    !n.read ? 'bg-blue-50' : ''
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
-                      !n.read ? 'bg-blue-500' : 'bg-transparent'
-                    }`} />
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium ${!n.read ? 'text-gray-900' : 'text-gray-600'}`}>
-                        {n.title}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
-                        {n.message}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {new Date(n.createdAt).toLocaleString()}
-                      </p>
+              notifications.map((n) => {
+                const isInvite = isStudent && isRoomInvitation(n.title);
+
+                return (
+                  <div
+                    key={n._id}
+                    onClick={() => {
+                      if (!isInvite && !n.read) markAsRead(n._id);
+                    }}
+                    className={`px-4 py-3 transition-colors ${
+                      isInvite ? 'cursor-default' : 'cursor-pointer hover:bg-gray-50'
+                    } ${!n.read ? 'bg-blue-50' : ''}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* Unread dot or room icon */}
+                      {isInvite ? (
+                        <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <Lock className="w-3.5 h-3.5 text-violet-600" />
+                        </div>
+                      ) : (
+                        <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
+                          !n.read ? 'bg-blue-500' : 'bg-transparent'
+                        }`} />
+                      )}
+
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium ${!n.read ? 'text-gray-900' : 'text-gray-600'}`}>
+                          {n.title}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+                          {n.message}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {new Date(n.createdAt).toLocaleString()}
+                        </p>
+
+                        {/* Accept / Decline buttons for room invitations */}
+                        {isInvite && n.courseId && (
+                          <RoomInvitationActions
+                            notificationId={n._id}
+                            roomId={n.courseId}
+                            onResponded={(id) => markAsRead(id)}
+                          />
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

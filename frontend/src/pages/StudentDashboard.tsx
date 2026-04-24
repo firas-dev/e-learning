@@ -293,6 +293,12 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold text-gray-900">My Courses</h2>
                 <button
+                  onClick={() => setCurrentPage('private-rooms')}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Private Rooms"
+                >Private Rooms
+                </button>
+                <button
                   onClick={() => setCurrentPage('catalog')}
                   className="text-sm text-blue-600 hover:text-blue-700 font-medium"
                 >
@@ -562,7 +568,7 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
               )}
             </div>
           </div>
-
+                    
           {/* Upcoming Sessions */}
           <div className="space-y-6">
             <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">

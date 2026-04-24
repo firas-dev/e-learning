@@ -202,6 +202,7 @@ function AppContent() {
       {currentPage === 'private-rooms' && user?.role === 'student' && (
         <StudentPrivateRooms />
       )}
+      {currentPage === ''}
     </NavigationProvider>
   );
 }

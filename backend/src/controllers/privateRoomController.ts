@@ -3,6 +3,17 @@ import PrivateRoom from "../models/PrivateRoom";
 import Notification from "../models/Notification";
 import User from "../models/User";
 import mongoose from "mongoose";
+import nodemailer from "nodemailer";
+import RoomStudent from "../models/RoomStudent";
+
+const transporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST,
+  port: Number(process.env.EMAIL_PORT) || 587,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
 
 // ── POST /api/rooms — Teacher creates a room ──────────────────────────────
 export const createRoom = async (req: Request, res: Response) => {
@@ -74,8 +85,7 @@ export const getRoom = async (req: Request, res: Response) => {
 
     if (!room) return res.status(404).json({ message: "Room not found." });
 
-    // Access check: teacher owner or accepted member
-    const isTeacher = String(room.teacherId._id) === userId || role === "admin";
+    const isTeacher = String((room.teacherId as any)._id) === userId || role === "admin";
     const isMember = room.members.some((m: any) => String(m._id) === userId);
 
     if (!isTeacher && !isMember) {
@@ -104,24 +114,22 @@ export const inviteStudents = async (req: Request, res: Response) => {
       return res.status(403).json({ message: "Room not found or unauthorized." });
     }
 
+    const teacher = await User.findById(teacherId).select("fullName email");
     const results: { email: string; status: string }[] = [];
 
     for (const rawEmail of emails) {
       const email = rawEmail.trim().toLowerCase();
       if (!email) continue;
 
-      // Skip if already invited (pending or accepted)
       const existing = room.invitedEmails.find((i) => i.email === email);
       if (existing && existing.status !== "declined") {
         results.push({ email, status: "already_invited" });
         continue;
       }
 
-      // Check if user exists
       const user = await User.findOne({ email, role: "student" });
 
       if (existing && existing.status === "declined") {
-        // Re-invite declined user
         existing.status = "pending";
         existing.invitedAt = new Date();
         existing.respondedAt = undefined;
@@ -135,18 +143,85 @@ export const inviteStudents = async (req: Request, res: Response) => {
         });
       }
 
-      // Send in-app notification if user exists
+      // ── In-app notification (if user exists) ──────────────────────────
       if (user) {
-        const teacher = await User.findById(teacherId).select("fullName");
         await Notification.create({
           userId: user._id,
           title: "🔐 Private Room Invitation",
           message: `${teacher?.fullName || "A teacher"} invited you to join the private room "${room.name}". Check your invitations to accept or decline.`,
-          courseId: room._id as any, // reusing courseId field for roomId
+          courseId: room._id as any,
         });
       }
 
-      results.push({ email, status: user ? "invited_with_notification" : "invited_no_account" });
+      // ── Email notification ─────────────────────────────────────────────
+      const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+      const privateRoomsUrl = `${clientUrl}/`;
+
+      try {
+        await transporter.sendMail({
+          from: `"EduSmart AI" <${process.env.EMAIL_USER}>`,
+          to: email,
+          subject: `You've been invited to join "${room.name}" on EduSmart AI`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 24px; border-radius: 12px;">
+              <div style="background: linear-gradient(135deg, #7c3aed, #6d28d9); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+                <div style="font-size: 40px; margin-bottom: 12px;">🔐</div>
+                <h1 style="color: white; margin: 0; font-size: 24px;">Private Room Invitation</h1>
+              </div>
+
+              <div style="background: white; padding: 32px; border-radius: 0 0 12px 12px; border: 1px solid #e5e7eb;">
+                <p style="color: #374151; font-size: 16px; margin-bottom: 8px;">
+                  Hi${user ? ` <strong>${user.fullName}</strong>` : ""},
+                </p>
+                <p style="color: #374151; font-size: 15px; line-height: 1.6;">
+                  <strong>${teacher?.fullName || "An instructor"}</strong> has invited you to join the exclusive private learning room:
+                </p>
+
+                <div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 16px 20px; margin: 20px 0; text-align: center;">
+                  <p style="margin: 0; font-size: 20px; font-weight: bold; color: #6d28d9;">${room.name}</p>
+                  ${room.description ? `<p style="margin: 8px 0 0; color: #6b7280; font-size: 13px;">${room.description}</p>` : ""}
+                </div>
+
+                ${user
+                  ? `
+                <p style="color: #374151; font-size: 14px; margin-bottom: 20px;">
+                  Log in to EduSmart AI and go to <strong>Private Rooms</strong> to accept or decline this invitation.
+                </p>
+                <div style="text-align: center; margin: 24px 0;">
+                  <a href="${privateRoomsUrl}"
+                     style="background: #7c3aed; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px; display: inline-block;">
+                    View Invitation
+                  </a>
+                </div>
+                  `
+                  : `
+                <p style="color: #374151; font-size: 14px; margin-bottom: 20px;">
+                  You don't have an EduSmart AI account yet. Sign up with this email address and the invitation will be waiting for you.
+                </p>
+                <div style="text-align: center; margin: 24px 0;">
+                  <a href="${clientUrl}"
+                     style="background: #7c3aed; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px; display: inline-block;">
+                    Create Account
+                  </a>
+                </div>
+                  `
+                }
+
+                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+                <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">
+                  EduSmart AI — Your AI-Powered Learning Platform
+                </p>
+              </div>
+            </div>
+          `,
+        });
+
+        results.push({ email, status: user ? "invited_with_notification" : "invited_no_account" });
+      } catch (emailErr) {
+        console.error(`❌ Failed to send invitation email to ${email}:`, emailErr);
+        // Still mark as invited even if email fails
+        results.push({ email, status: user ? "invited_with_notification" : "invited_no_account" });
+      }
     }
 
     await room.save();
@@ -163,14 +238,12 @@ export const getStudentInvitations = async (req: Request, res: Response) => {
     const user = (req as any).user;
     const email = user.email;
 
-    // Find by email match (works even before they had an account)
     const rooms = await PrivateRoom.find({
       "invitedEmails.email": email,
       "invitedEmails.status": "pending",
       isActive: true,
     }).populate("teacherId", "fullName email");
 
-    // Only return the specific invitation entry for this user
     const invitations = rooms.map((room) => {
       const invite = room.invitedEmails.find(
         (i) => i.email === email && i.status === "pending"
@@ -191,51 +264,68 @@ export const getStudentInvitations = async (req: Request, res: Response) => {
 };
 
 // ── PATCH /api/rooms/:roomId/respond — Student accepts or declines ────────
-export const respondToInvitation = async (req: Request, res: Response) => {
+export const respondToInvitationPatched = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
     const { roomId } = req.params;
-    const { action } = req.body; // "accept" | "decline"
-
+    const { action } = req.body;
+ 
     if (!["accept", "decline"].includes(action)) {
       return res.status(400).json({ message: "Invalid action." });
     }
-
+ 
     const room = await PrivateRoom.findById(roomId);
     if (!room) return res.status(404).json({ message: "Room not found." });
-
+ 
     const invite = room.invitedEmails.find(
       (i) => i.email === user.email && i.status === "pending"
     );
     if (!invite) {
       return res.status(404).json({ message: "Invitation not found or already responded." });
     }
-
-    invite.status = action === "accept" ? "accepted" : "declined";
+ 
+    invite.status      = action === "accept" ? "accepted" : "declined";
     invite.respondedAt = new Date();
-    invite.studentId = new mongoose.Types.ObjectId(user.id);
-
+    invite.studentId   = new mongoose.Types.ObjectId(user.id);
+ 
     if (action === "accept") {
-      // Add to members if not already there
-      const alreadyMember = room.members.some(
-        (m) => String(m) === String(user.id)
-      );
+      const alreadyMember = room.members.some((m) => String(m) === String(user.id));
       if (!alreadyMember) {
         room.members.push(new mongoose.Types.ObjectId(user.id));
       }
-
+ 
+      // ── Auto-create gamification record ──────────────────────────────
+      await RoomStudent.updateOne(
+        { studentId: user.id, roomId },
+        {
+          $setOnInsert: {
+            totalPoints:         0,
+            level:               1,
+            badges:              [],
+            streak:              { current: 0, longest: 0 },
+            challengesCompleted: 0,
+            challengesAttempted: 0,
+            hintsRequested:      0,
+            helpfulPosts:        0,
+            joinedAt:            new Date(),
+            lastActiveAt:        new Date(),
+          },
+        },
+        { upsert: true }
+      );
+ 
       // Notify teacher
       const teacher = await User.findById(room.teacherId).select("_id");
       if (teacher) {
         await Notification.create({
-          userId: teacher._id,
-          title: "✅ Invitation Accepted",
-          message: `${user.fullName || user.email} joined your private room "${room.name}".`,
+          userId:   teacher._id,
+          title:    "✅ Invitation Accepted",
+          message:  `${user.fullName || user.email} joined your private room "${room.name}".`,
           courseId: room._id as any,
         });
       }
     }
-
+ 
     await room.save();
     res.json({ message: `Invitation ${action}ed.`, room });
   } catch (err) {
@@ -255,11 +345,10 @@ export const removeMember = async (req: Request, res: Response) => {
 
     room.members = room.members.filter((m) => String(m) !== memberId) as any;
 
-    // Also mark their invite as declined so they can be re-invited later
     const memberUser = await User.findById(memberId).select("email");
     if (memberUser) {
-      const invite = room.invitedEmails.find((i) => i.email === memberUser.email);
-      if (invite) invite.status = "declined";
+      const inv = room.invitedEmails.find((i) => i.email === memberUser.email);
+      if (inv) inv.status = "declined";
     }
 
     await room.save();

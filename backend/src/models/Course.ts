@@ -6,7 +6,7 @@ export interface ICourse {
   description: string;
   type: "live" | "recorded";
   duration: number;
-  teacherId: mongoose.Types.ObjectId;
+  teacherId: mongoose.Types.ObjectId; 
   scheduledAt?: Date;
   createdAt?: Date;
   is_published: boolean;
