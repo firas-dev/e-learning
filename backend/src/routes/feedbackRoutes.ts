@@ -35,7 +35,7 @@ router.post("/:courseId/comments", protect, async (req, res) => {
     if (!text?.trim()) return res.status(400).json({ message: "Text is required" });
 
     const comment = await Comment.create({
-      courseId: req.params.courseId,
+      courseId: req.params.courseId ,
       lessonId: lessonId || null,
       parentId: parentId || null,
       studentId: user.id,

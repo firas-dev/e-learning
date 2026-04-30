@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useLessons } from '../hooks/useLessons';
 import { useProgress } from '../hooks/useProgress';
@@ -17,6 +17,9 @@ import {
   Users,
   BookOpen,
   ExternalLink,
+  Plus,   
+  X,      
+  Upload, 
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import CommentsAndRating, { CourseRatingInline, LessonRatingWidget } from '../components/CommentsAndRating';
@@ -40,8 +43,32 @@ interface RecordedCourseProps {
 export default function RecordedCourse({ courseId, courseTitle, onOpenPDF, onViewTeacherProfile }: RecordedCourseProps) {
   const { user } = useAuth();
   const { setCurrentPage } = useNavigation();
-  const { lessons, loading } = useLessons(courseId);
+  const { lessons, loading, createLesson } = useLessons(courseId);
+  // Add-lesson form (teacher only)
+    const [showAddLesson, setShowAddLesson] = useState(false);
+    const [newTitle, setNewTitle]           = useState('');
+    const [newDesc, setNewDesc]             = useState('');
+    const [newFiles, setNewFiles]           = useState<File[]>([]);
+    const [addingLesson, setAddingLesson]   = useState(false);
+    const [addLessonError, setAddLessonError] = useState('');
+    const addLessonFileRef = useRef<HTMLInputElement>(null);
 
+    const handleAddLesson = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddLessonError('');
+    setAddingLesson(true);
+    try {
+      await createLesson(newTitle, newDesc, lessons.length + 1, newFiles);
+      setNewTitle('');
+      setNewDesc('');
+      setNewFiles([]);
+      setShowAddLesson(false);
+    } catch (err: any) {
+      setAddLessonError(err?.response?.data?.message || 'Failed to create lesson.');
+    } finally {
+      setAddingLesson(false);
+    }
+    };
   const isTeacher = user?.role === 'teacher';
   const isStudent = user?.role === 'student';
 
@@ -53,7 +80,7 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF, onVie
     forceCompleteLesson,
   } = useProgress(isStudent ? courseId : '', lessons.length);
 
-  const { pause: pauseTimer, resume: resumeTimer } = useLearningTimer(isStudent ? courseId : undefined);
+  //const { pause: pauseTimer, resume: resumeTimer } = useLearningTimer(isStudent ? courseId : undefined);
 
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -67,7 +94,7 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF, onVie
       .catch(() => {});
   }, [courseId, isStudent]);
 
-  useEffect(() => {
+  /*useEffect(() => {
     if (!isStudent) return;
     const handleVisibilityChange = () => {
       if (document.hidden) { videoRef.current?.pause(); pauseTimer(); }
@@ -84,7 +111,39 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF, onVie
       window.removeEventListener('focus', handleFocus);
     };
   }, [pauseTimer, resumeTimer, isStudent]);
+*/
 
+      // Track actual seconds of video played this session (not wall-clock time)
+    const videoPlayedSeconds = useRef<number>(0);
+    const lastVideoTime = useRef<number | null>(null);
+    const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const flushVideoTime = useCallback(async () => {
+      const seconds = Math.floor(videoPlayedSeconds.current);
+      if (seconds < 60) return; // minimum 1 minute before flushing
+      const deltaMinutes = Math.floor(seconds / 60);
+      videoPlayedSeconds.current -= deltaMinutes * 60;
+      try {
+        await axios.patch(`${API}/student/courses/${courseId}/learning-time`, { deltaMinutes });
+      } catch (_) {}
+    }, [courseId]);
+
+    // Start/stop periodic flush
+    useEffect(() => {
+      if (!isStudent) return;
+      flushIntervalRef.current = setInterval(flushVideoTime, 60_000);
+      return () => {
+        if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
+        // Final flush on unmount via sendBeacon
+        const remaining = Math.floor(videoPlayedSeconds.current / 60);
+        if (remaining >= 1) {
+          navigator.sendBeacon(
+            `${API}/student/courses/${courseId}/learning-time`,
+            JSON.stringify({ deltaMinutes: remaining })
+          );
+        }
+      };
+    }, [isStudent, courseId, flushVideoTime]);
   const [showConsentModal, setShowConsentModal] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [currentEmotion] = useState<'engaged' | 'confused' | 'bored' | 'neutral'>('neutral');
@@ -203,18 +262,99 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF, onVie
         )}
 
         {/* Teacher info banner — for teacher role */}
-        {isTeacher && (
-          <div className="mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex items-start gap-3">
-            <Users className="w-5 h-5 text-indigo-500 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-semibold text-indigo-800">You're viewing this course as its teacher.</p>
-              <p className="text-xs text-indigo-600 mt-0.5">
-                You can preview all lesson content, view student discussions, reply to comments, and delete inappropriate messages.
-                Progress tracking and lesson ratings are available to enrolled students only.
-              </p>
-            </div>
+{isTeacher && (
+  <div className="mb-6 space-y-4">
+    <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex items-start justify-between gap-3">
+      <div className="flex items-start gap-3">
+        <Users className="w-5 h-5 text-indigo-500 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-semibold text-indigo-800">You're viewing this course as its teacher.</p>
+          <p className="text-xs text-indigo-600 mt-0.5">
+            You can preview all lesson content, view student discussions, reply to comments, and delete inappropriate messages.
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={() => setShowAddLesson((v) => !v)}
+        className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors"
+      >
+        <Plus className="w-4 h-4" />
+        Add Lesson
+      </button>
+    </div>
+
+    {/* Add lesson form */}
+    {showAddLesson && (
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-gray-900">New Lesson</h2>
+          <button onClick={() => setShowAddLesson(false)}>
+            <X className="w-5 h-5 text-gray-400 hover:text-gray-600" />
+          </button>
+        </div>
+        <form onSubmit={handleAddLesson} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Lesson Title</label>
+            <input
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              required
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="e.g. Introduction to Variables"
+            />
           </div>
-        )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea
+              value={newDesc}
+              onChange={(e) => setNewDesc(e.target.value)}
+              rows={2}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
+              placeholder="What will students learn in this lesson?"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Files (optional)</label>
+            <input
+              ref={addLessonFileRef}
+              type="file"
+              multiple
+              accept="video/*,application/pdf"
+              className="hidden"
+              onChange={(e) => setNewFiles(Array.from(e.target.files || []))}
+            />
+            <button
+              type="button"
+              onClick={() => addLessonFileRef.current?.click()}
+              className="flex items-center gap-2 px-4 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-indigo-400 hover:text-indigo-600 transition-colors"
+            >
+              <Upload className="w-4 h-4" />
+              {newFiles.length > 0 ? `${newFiles.length} file(s) selected` : 'Upload videos / PDFs'}
+            </button>
+            {newFiles.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {newFiles.map((f, i) => (
+                  <li key={i} className="text-xs text-gray-500 flex items-center gap-1">
+                    <FileText className="w-3 h-3" /> {f.name}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {addLessonError && <p className="text-sm text-red-500">{addLessonError}</p>}
+          <button
+            type="submit"
+            disabled={addingLesson}
+            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors"
+          >
+            {addingLesson && <Loader2 className="w-4 h-4 animate-spin" />}
+            {addingLesson ? 'Uploading...' : 'Create Lesson'}
+          </button>
+        </form>
+      </div>
+    )}
+  </div>
+)}
 
         {lessons.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
@@ -238,11 +378,28 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF, onVie
                       disablePictureInPicture
                       onContextMenu={(e) => e.preventDefault()}
                       className="w-full h-full object-contain"
-                      onTimeUpdate={
+                      /*onTimeUpdate={
                         isStudent && currentLesson
                           ? getVideoTimeUpdateHandler(currentLesson._id)
                           : undefined
-                      }
+                      }*/
+                        onPlay={() => { lastVideoTime.current = videoRef.current?.currentTime ?? 0; }}
+                        onPause={() => { lastVideoTime.current = null; }}
+                        onSeeking={() => { lastVideoTime.current = null; }}
+                        onSeeked={() => { lastVideoTime.current = videoRef.current?.currentTime ?? null; }}
+                      onTimeUpdate={isStudent && currentLesson ? (e) => {
+                        const video = e.currentTarget;
+                        // Accumulate genuinely played seconds (not seeking)
+                        if (!video.seeking && lastVideoTime.current !== null) {
+                          const delta = video.currentTime - lastVideoTime.current;
+                          if (delta > 0 && delta < 2) { // ignore big jumps (seeks)
+                            videoPlayedSeconds.current += delta;
+                          }
+                        }
+                        lastVideoTime.current = video.currentTime;
+                        // Also call the original progress/completion tracker
+                        getVideoTimeUpdateHandler(currentLesson._id)(e);
+                      } : undefined}
                     />
                   ) : (
                     <div className="text-center text-gray-500">

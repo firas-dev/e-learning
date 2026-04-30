@@ -17,7 +17,7 @@ export const getLessons = async (req: Request, res: Response) => {
 // CREATE lesson with uploaded files
 export const createLesson = async (req: Request, res: Response) => {
     try {
-      const { courseId } = req.params;
+      const courseId = req.params.courseId as string;
       const { title, description, order } = req.body;
       const teacherId = (req as any).user.id;  
       if (!title) {
@@ -48,7 +48,17 @@ export const createLesson = async (req: Request, res: Response) => {
         order: order || 0,
         files,
       });
-  
+      // Auto-update course duration from uploaded video files
+      const videoDurationSeconds = uploadedFiles && uploadedFiles.length > 0
+      ? uploadedFiles
+          .filter((f) => f.mimetype?.startsWith('video/'))
+          .reduce((sum: number, f: any) => sum + (f.duration || 0), 0)
+      : 0;
+
+      if (videoDurationSeconds > 0) {
+      const addedHours = videoDurationSeconds / 60;
+      await Course.findByIdAndUpdate(courseId, { $inc: { duration: addedHours } });
+      }
       res.status(201).json(lesson);
     } catch (err) {
       console.error("❌ createLesson error:", err);
@@ -61,7 +71,23 @@ export const deleteLesson = async (req: Request, res: Response) => {
     const { lessonId } = req.params;
     const lesson = await Lesson.findById(lessonId);
     if (!lesson) return res.status(404).json({ message: "Lesson not found." });
-
+    // Subtract video durations from course total
+    const videoFiles = lesson.files.filter((f) => f.mimetype?.startsWith('video/'));
+    if (videoFiles.length > 0) {
+      try {
+        const durations = await Promise.all(
+          videoFiles.map((f) =>
+            cloudinary.api.resource(f.publicId, { resource_type: 'video' })
+              .then((info: any) => info.duration || 0)
+              .catch(() => 0)
+          )
+        );
+        const removedHours = durations.reduce((s: number, d: number) => s + d, 0) / 3600;
+        if (removedHours > 0) {
+          await Course.findByIdAndUpdate(lesson.courseId, { $inc: { duration: -removedHours } });
+        }
+      } catch (_) {}
+    }
     // Delete each file from Cloudinary
     await Promise.all(
       lesson.files.map((f) => {
@@ -94,7 +120,19 @@ export const addFilesToLesson = async (req: Request, res: Response) => {
       { $push: { files: { $each: newFiles } } },
       { new: true }
     );
+      // Auto-update course duration from newly uploaded video files
+      const uploadedFiles = req.files as any[];
+      const videoDurationSeconds = uploadedFiles
+        .filter((f) => f.mimetype?.startsWith('video/'))
+        .reduce((sum: number, f: any) => sum + (f.duration || 0), 0);
 
+      if (videoDurationSeconds > 0) {
+        const lesson = await Lesson.findById(lessonId);
+        if (lesson) {
+          const addedHours = videoDurationSeconds / 60;
+          await Course.findByIdAndUpdate(lesson.courseId, { $inc: { duration: addedHours } });
+        }
+      }
     res.json(lesson);
   } catch (err) {
     res.status(500).json({ message: "Server error" });
@@ -113,7 +151,21 @@ export const deleteFileFromLesson = async (req: Request, res: Response) => {
     await Lesson.findByIdAndUpdate(lessonId, {
       $pull: { files: { publicId } },
     });
-
+    // Subtract video duration from course duration
+      const lesson = await Lesson.findById(lessonId);
+      if (lesson && mimetype?.startsWith('video/')) {
+        const file = lesson.files.find((f) => f.publicId === publicId);
+        if (file) {
+          // Get duration from Cloudinary
+          try {
+            const info = await cloudinary.api.resource(publicId, { resource_type: 'video' });
+            const removedHours = (info.duration || 0) / 3600;
+            if (removedHours > 0) {
+              await Course.findByIdAndUpdate(lesson.courseId, { $inc: { duration: -removedHours } });
+            }
+          } catch (_) {}
+        }
+      }
     res.json({ message: "File deleted." });
   } catch (err) {
     res.status(500).json({ message: "Server error" });

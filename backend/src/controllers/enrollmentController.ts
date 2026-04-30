@@ -70,7 +70,8 @@ export const getPublishedCourses = async (req: Request, res: Response) => {
 export const enrollCourse = async (req: Request, res: Response) => {
   try {
     const studentId = (req as any).user.id;
-    const { courseId } = req.params;
+    const courseId = req.params.courseId as string;
+
 
     const course = await Course.findById(courseId);
     if (!course || !course.is_published) {

@@ -17,7 +17,7 @@ const courseSchema = new Schema<ICourse>(
     title: { type: String, required: true },
     description: { type: String },
     type: { type: String, enum: ["live", "recorded"], required: true },
-    duration: { type: Number, required: true },
+    duration: { type: Number, default: 0 },
     teacherId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     scheduledAt: { type: Date },
     is_published: { type: Boolean, default: false },
