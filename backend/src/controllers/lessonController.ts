@@ -56,7 +56,7 @@ export const createLesson = async (req: Request, res: Response) => {
       : 0;
 
       if (videoDurationSeconds > 0) {
-      const addedHours = videoDurationSeconds / 60;
+      const addedHours = videoDurationSeconds / 3600;
       await Course.findByIdAndUpdate(courseId, { $inc: { duration: addedHours } });
       }
       res.status(201).json(lesson);
@@ -129,7 +129,7 @@ export const addFilesToLesson = async (req: Request, res: Response) => {
       if (videoDurationSeconds > 0) {
         const lesson = await Lesson.findById(lessonId);
         if (lesson) {
-          const addedHours = videoDurationSeconds / 60;
+          const addedHours = videoDurationSeconds / 3600;
           await Course.findByIdAndUpdate(lesson.courseId, { $inc: { duration: addedHours } });
         }
       }

@@ -14,6 +14,22 @@ import StarBadge from '../components/StarBadge';
 interface StudentDashboardProps {
   onOpenCourse: (id: string, title: string, type: 'live' | 'recorded') => void;
 }
+function formatMinutes(totalMinutes: number): string {
+  const t = Math.max(0, Math.round(totalMinutes));
+  const h = Math.floor(t / 60);
+  const m = t % 60;
+  return `${h}h${m.toString().padStart(2, '0')}m`;
+}
+ 
+// ── Format a course duration stored in hours (float) as e.g. "1h30m" ──
+function formatHours(totalHours: number): string {
+  const totalMins = Math.round(totalHours * 60);
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h${m.toString().padStart(2, '0')}m`;
+}
 
 // ── Live badge ──
 function LiveBadge({ scheduledAt, duration }: { scheduledAt?: string; duration: number }) {
@@ -268,7 +284,7 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
             <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
               <Clock className="w-6 h-6 text-orange-600" />
             </div>
-            <p className="text-2xl font-bold text-gray-900">{stats.totalLearningTime}h</p>
+            <p className="text-2xl font-bold text-gray-900">{formatMinutes(stats.totalLearningTime)}</p>
             <p className="text-sm text-gray-600">Learning Time</p>
           </div>
 
@@ -487,7 +503,7 @@ export default function StudentDashboard({ onOpenCourse }: StudentDashboardProps
                           <div className="flex items-center gap-4 text-xs text-gray-500">
                             <span className="flex items-center gap-1">
                               <Clock className="w-3 h-3" />
-                              {enrollment.course.duration}h
+                              {formatHours(enrollment.course.duration)}
                             </span>
                             <span className="capitalize">{enrollment.course.type}</span>
                             {enrollment.course.createdAt && (

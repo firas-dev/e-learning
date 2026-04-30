@@ -77,7 +77,7 @@ export const getStudentDashboard = async (req: Request, res: Response) => {
       stats: {
         totalCourses: enrollments.length,
         avgProgress,
-        totalLearningTime: Math.round(totalLearningTime / 60),
+        totalLearningTime: Math.round(totalLearningTime),
       },
       upcomingSessions: liveSessions.map((s) => ({
         id: s._id,
@@ -92,7 +92,6 @@ export const getStudentDashboard = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
 // ─── GET /courses/:courseId/progress ─────────────────────────────────────────
 // Hydrates frontend state on mount for cross-session sync
 export const getCourseProgress = async (req: Request, res: Response) => {

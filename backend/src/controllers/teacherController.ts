@@ -116,7 +116,7 @@ export const createCourse = async (req: Request, res: Response) => {
       title,
       description,
       type: course_type,
-      duration: 0,
+      duration: Number(duration_hours),
       teacherId,
       scheduledAt: course_type === "live" ? scheduledAt : undefined,
       is_published: false,
