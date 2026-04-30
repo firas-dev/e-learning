@@ -1,4 +1,14 @@
-export default function MiniBarChart({ data, color }) {
+type DataPoint = {
+    month: string;
+    count: number;
+  };
+  
+  type MiniBarChartProps = {
+    data: DataPoint[];
+    color: string;
+  };
+  
+  export default function MiniBarChart({ data, color }: MiniBarChartProps) {
     const max = Math.max(...data.map((d) => d.count), 1);
   
     return (

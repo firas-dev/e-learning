@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
-
 import AdminSidebar from "../components/admin/layout/AdminSidebar";
 import AdminHeader from "../components/admin/layout/AdminHeader";
-
 import AnalyticsTab from "../components/admin/tabs/AnalyticsTab";
 import UsersTab from "../components/admin/tabs/UsersTab";
 import CoursesTab from "../components/admin/tabs/CoursesTab";
@@ -24,7 +22,7 @@ export default function AdminDashboard() {
 
 
         {/* Page Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-3">
 
           <AdminHeader user={user} />
 

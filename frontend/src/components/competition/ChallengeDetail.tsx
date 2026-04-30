@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   ArrowLeft, Send, Lightbulb, Trophy, MessageSquare,
-  Loader2, CheckCircle, Star, Clock, AlertCircle,
+  Loader2, CheckCircle, Clock, AlertCircle,
   ChevronDown, ChevronUp, Upload, X, Eye,
 } from "lucide-react";
 import { useCompetition, IChallenge, ISubmission, IThread } from "../../hooks/useCompetition";

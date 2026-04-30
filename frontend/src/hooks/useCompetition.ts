@@ -72,6 +72,7 @@ export interface IAnnouncement {
 }
 
 export interface IThread {
+  [x: string]: string;
   _id: string;
   authorId: string;
   authorName: string;

@@ -1,30 +1,26 @@
 import express from "express";
-import { protect } from "../middleware/auth";
 import Comment from "../models/Comment";
 import Rating from "../models/Rating";
+import Course from "../models/Course";
+import Lesson from "../models/Lesson";
+import Notification from "../models/Notification";
 import User from "../models/User";
-import mongoose from "mongoose";
+import { protect } from "../middleware/auth";
 
 const router = express.Router();
 
-async function getFullName(userId: string): Promise<string> {
-  const u = await User.findById(userId).select("fullName").lean();
-  return (u as any)?.fullName || "Student";
-}
+// Helper: get student full name
+const getFullName = async (userId: string): Promise<string> => {
+  const user = await User.findById(userId).select("fullName");
+  return user?.fullName || "A student";
+};
 
-// ── COMMENTS ──────────────────────────────────────────────────────────────
+// ── COMMENTS ──────────────────────────────────────────────────────────────────
 
-// GET /api/courses/:courseId/comments?lessonId=xxx
+// GET /api/courses/:courseId/comments
 router.get("/:courseId/comments", protect, async (req, res) => {
   try {
-    const filter: any = { courseId: req.params.courseId };
-    if (req.query.lessonId) {
-      filter.lessonId = new mongoose.Types.ObjectId(req.query.lessonId as string);
-    } else {
-      // When no lessonId is provided, return ALL comments for the course
-      // (both lesson-specific and course-level)
-    }
-    const comments = await Comment.find(filter).sort({ createdAt: -1 });
+    const comments = await Comment.find({ courseId: req.params.courseId }).sort({ createdAt: -1 });
     res.json(comments);
   } catch (err: any) {
     res.status(500).json({ message: err.message });
@@ -35,27 +31,17 @@ router.get("/:courseId/comments", protect, async (req, res) => {
 router.post("/:courseId/comments", protect, async (req, res) => {
   try {
     const user = (req as any).user;
-    const { text, lessonId } = req.body;
+    const { text, lessonId, parentId } = req.body;
+    if (!text?.trim()) return res.status(400).json({ message: "Text is required" });
 
-    if (!text?.trim()) {
-      return res.status(400).json({ message: "Comment text is required" });
-    }
-
-    const studentName = await getFullName(user.id);
-
-    const commentData: any = {
-      courseId: new mongoose.Types.ObjectId(req.params.courseId),
-      studentId: new mongoose.Types.ObjectId(user.id),
-      studentName,
+    const comment = await Comment.create({
+      courseId: req.params.courseId,
+      lessonId: lessonId || null,
+      parentId: parentId || null,
+      studentId: user.id,
+      studentName: user.fullName || "Student",
       text: text.trim(),
-    };
-
-    // Only add lessonId if it's a valid ObjectId string
-    if (lessonId && mongoose.Types.ObjectId.isValid(lessonId)) {
-      commentData.lessonId = new mongoose.Types.ObjectId(lessonId);
-    }
-
-    const comment = await Comment.create(commentData);
+    });
     res.status(201).json(comment);
   } catch (err: any) {
     console.error("Error creating comment:", err);
@@ -78,7 +64,7 @@ router.delete("/:courseId/comments/:commentId", protect, async (req, res) => {
   }
 });
 
-// ── RATINGS ───────────────────────────────────────────────────────────────
+// ── RATINGS ───────────────────────────────────────────────────────────────────
 
 // GET /api/courses/:courseId/ratings/course
 router.get("/:courseId/ratings/course", protect, async (req, res) => {
@@ -135,6 +121,7 @@ router.post("/:courseId/ratings/lesson/:lessonId", protect, async (req, res) => 
     });
 
     let myStars: number | null = null;
+    const isNewRating = !existing;
 
     if (existing && existing.stars === stars) {
       // Same rating clicked again → toggle off (delete)
@@ -147,6 +134,26 @@ router.post("/:courseId/ratings/lesson/:lessonId", protect, async (req, res) => 
         { new: true, upsert: true }
       );
       myStars = stars;
+
+      // ── Notify the course publisher (teacher) ─────────────────────────
+      try {
+        const course = await Course.findById(req.params.courseId).select("teacherId title");
+        const lesson = await Lesson.findById(req.params.lessonId).select("title");
+        if (course?.teacherId) {
+          const studentName = await getFullName(user.id);
+          const starLabel = "⭐".repeat(stars);
+          const lessonTitle = lesson?.title || "a lesson";
+          const action = isNewRating ? "rated" : "updated their rating for";
+          await Notification.create({
+            userId:   course.teacherId,
+            title:    "⭐ Lesson Rated",
+            message:  `${studentName} ${action} "${lessonTitle}" in "${course.title}" — ${starLabel} (${stars}/5).`,
+            courseId: course._id,
+          });
+        }
+      } catch (_) {
+        // Non-blocking
+      }
     }
 
     const lessonRatings = await Rating.find({ courseId: req.params.courseId, lessonId: req.params.lessonId });

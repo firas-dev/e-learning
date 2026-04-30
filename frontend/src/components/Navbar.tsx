@@ -29,7 +29,7 @@ export default function Navbar() {
             <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
               <BookOpen className="w-6 h-6 text-white" />
             </div>
-            <span className="font-bold text-xl text-gray-900">EduSmart AI</span>
+            <span className="font-bold text-xl text-gray-900">EduVerse AI</span>
           </button>
           {/* User Info & Actions */}
           <div className="flex items-center gap-6">
@@ -51,7 +51,7 @@ export default function Navbar() {
 
             <div className="flex items-center gap-2">
               {/* ✅ Bell only for students */}
-              {user?.role === 'student' && <NotificationBell />}
+              <NotificationBell />
               {user?.role === 'student' && <InvitationBell />}
 
               {/* ✅ Messages button */}

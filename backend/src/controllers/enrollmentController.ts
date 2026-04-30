@@ -2,6 +2,8 @@ import { Request, Response } from "express";
 import Enrollment from "../models/Enrollment";
 import Course from "../models/Course";
 import Rating from "../models/Rating";
+import Notification from "../models/Notification";
+import User from "../models/User";
 
 // helper: compute average rating for a course from all lesson ratings
 async function getCourseAverageRating(courseId: string): Promise<number> {
@@ -87,6 +89,21 @@ export const enrollCourse = async (req: Request, res: Response) => {
       learningTime: 0,
       lastAccessed: new Date(),
     });
+
+    // ── Notify the course publisher (teacher) ────────────────────────────
+    try {
+      const student = await User.findById(studentId).select("fullName");
+      if (course.teacherId) {
+        await Notification.create({
+          userId:   course.teacherId,
+          title:    "🎓 New Enrollment",
+          message:  `${student?.fullName || "A student"} just enrolled in your course "${course.title}".`,
+          courseId: course._id,
+        });
+      }
+    } catch (_) {
+      // Non-blocking — enrollment already succeeded
+    }
 
     res.status(201).json(enrollment);
   } catch (err) {
