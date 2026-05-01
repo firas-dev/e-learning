@@ -13,6 +13,17 @@ interface CourseCatalogProps {
   onViewTeacherProfile?: (teacherId: string) => void;
 }
 
+// Format a duration stored in hours (float) as e.g. "1h08m" or "45m"
+function formatHours(totalHours: number): string {
+  if (!totalHours || totalHours <= 0) return '0m';
+  const totalMins = Math.round(totalHours * 60);
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h${m.toString().padStart(2, '0')}m`;
+}
+
 export default function CourseCatalog({ onViewTeacherProfile }: CourseCatalogProps) {
   const { setCurrentPage } = useNavigation();
   const {
@@ -145,7 +156,8 @@ export default function CourseCatalog({ onViewTeacherProfile }: CourseCatalogPro
                       {/* Meta */}
                       <div className="flex flex-wrap gap-3 text-xs text-gray-500 mb-4">
                         <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />{course.duration}h
+                          <Clock className="w-3 h-3" />
+                          {formatHours(course.duration)}
                         </span>
                         {/* Teacher — clickable if onViewTeacherProfile is provided */}
                         {onViewTeacherProfile && course.teacherId ? (
@@ -216,7 +228,7 @@ export default function CourseCatalog({ onViewTeacherProfile }: CourseCatalogPro
                   disabled={page === 1}
                   className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
-                  <ChevronLeft className="w-5 h-5 text-gray-600" />
+                  <ChevronLeft className="w-4 h-4 text-gray-600" />
                 </button>
 
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
@@ -226,7 +238,7 @@ export default function CourseCatalog({ onViewTeacherProfile }: CourseCatalogPro
                     className={`w-9 h-9 rounded-lg text-sm font-medium transition-colors ${
                       p === page
                         ? 'bg-blue-600 text-white'
-                        : 'border border-gray-300 text-gray-600 hover:bg-gray-100'
+                        : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
                     {p}
@@ -238,7 +250,7 @@ export default function CourseCatalog({ onViewTeacherProfile }: CourseCatalogPro
                   disabled={page === totalPages}
                   className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
-                  <ChevronRight className="w-5 h-5 text-gray-600" />
+                  <ChevronRight className="w-4 h-4 text-gray-600" />
                 </button>
               </div>
             )}

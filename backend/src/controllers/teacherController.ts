@@ -19,7 +19,6 @@ export const getTeacherDashboard = async (req: Request, res: Response) => {
     const limitNum = parseInt(limit as string);
     const skip = (pageNum - 1) * limitNum;
 
-    // Build filter query
     const query: any = { teacherId };
     if (type !== "all") query.type = type;
     if (search) {
@@ -29,10 +28,8 @@ export const getTeacherDashboard = async (req: Request, res: Response) => {
       ];
     }
 
-    // ✅ Step 1 — fetch all matching courses
     const allMatchingCourses = await Course.find(query);
 
-    // ✅ Step 2 — add enrollment count to each
     const coursesWithCount = await Promise.all(
       allMatchingCourses.map(async (course) => {
         const enrollmentCount = await Enrollment.countDocuments({
@@ -42,7 +39,6 @@ export const getTeacherDashboard = async (req: Request, res: Response) => {
       })
     );
 
-    // ✅ Step 3 — sort in memory (enrollment count not in DB)
     const sorted = coursesWithCount.sort((a, b) => {
       switch (sortBy) {
         case "oldest":
@@ -63,11 +59,9 @@ export const getTeacherDashboard = async (req: Request, res: Response) => {
       }
     });
 
-    // ✅ Step 4 — paginate after sorting
     const paginated = sorted.slice(skip, skip + limitNum);
     const totalCourses = sorted.length;
 
-    // ✅ Step 5 — stats based on ALL teacher courses
     const allCourseIds = (await Course.find({ teacherId }).select("_id")).map(
       (c) => c._id
     );
@@ -104,19 +98,19 @@ export const getTeacherDashboard = async (req: Request, res: Response) => {
 export const createCourse = async (req: Request, res: Response) => {
   try {
     const teacherId = (req as any).user.id;
-    const { title, description, course_type, duration_hours, scheduledAt } = req.body;
+    const { title, description, course_type, scheduledAt } = req.body;
 
-    if (!title || !course_type || !duration_hours) {
+    if (!title || !course_type) {
       return res
         .status(400)
-        .json({ message: "Title, type, and duration are required." });
+        .json({ message: "Title and type are required." });
     }
 
     const course = await Course.create({
       title,
       description,
       type: course_type,
-      duration: Number(duration_hours),
+      duration: 0, // always starts at 0 — real duration is built from video uploads
       teacherId,
       scheduledAt: course_type === "live" ? scheduledAt : undefined,
       is_published: false,

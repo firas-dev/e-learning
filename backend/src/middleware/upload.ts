@@ -6,38 +6,39 @@ import path from "path";
 const storage = new CloudinaryStorage({
   cloudinary,
   params: async (_req, file) => {
-    let resourceType: string;
-    let folder: string;
-
-    // Strip extension to avoid double-extension issues in public_id
     const nameWithoutExt = path
       .basename(file.originalname, path.extname(file.originalname))
       .replace(/\s+/g, "_");
 
     if (file.mimetype === "application/pdf") {
-      // PDFs must use resource_type "raw" and keep the .pdf extension
-      // in the public_id so Cloudinary returns the correct URL
       return {
         folder: "edusmart/pdfs",
         resource_type: "raw",
         public_id: `${Date.now()}-${nameWithoutExt}.pdf`,
       };
     } else if (file.mimetype.startsWith("image/")) {
-      resourceType = "image";
-      folder = "edusmart/images";
+      return {
+        folder: "edusmart/images",
+        resource_type: "image",
+        public_id: `${Date.now()}-${nameWithoutExt}`,
+      };
     } else if (file.mimetype.startsWith("video/")) {
-      resourceType = "video";
-      folder = "edusmart/videos";
+      return {
+        folder: "edusmart/videos",
+        resource_type: "video",
+        public_id: `${Date.now()}-${nameWithoutExt}`,
+        // eager forces Cloudinary to process the video synchronously,
+        // which populates the duration field on the resource
+        eager: [{ format: "mp4" }],
+        eager_async: false,
+      };
     } else {
-      resourceType = "raw";
-      folder = "edusmart/files";
+      return {
+        folder: "edusmart/files",
+        resource_type: "raw",
+        public_id: `${Date.now()}-${nameWithoutExt}`,
+      };
     }
-
-    return {
-      folder,
-      resource_type: resourceType,
-      public_id: `${Date.now()}-${nameWithoutExt}`,
-    };
   },
 });
 

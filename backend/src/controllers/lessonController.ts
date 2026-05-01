@@ -14,24 +14,56 @@ export const getLessons = async (req: Request, res: Response) => {
   }
 };
 
+// ─── Helper: fetch duration in seconds for one publicId, with one retry ───
+async function getVideoDurationSeconds(publicId: string): Promise<number> {
+  const attempt = async () => {
+    const info = await cloudinary.api.resource(publicId, {
+      resource_type: "video",
+      image_metadata: true,
+    });
+    return (info.duration as number) || 0;
+  };
+
+  try {
+    const seconds = await attempt();
+    if (seconds > 0) return seconds;
+    // If duration is still 0, wait 2s and retry once
+    await new Promise((r) => setTimeout(r, 2000));
+    return await attempt();
+  } catch (err) {
+    console.error(`❌ getVideoDurationSeconds failed for [${publicId}]:`, err);
+    return 0;
+  }
+}
+
+// ─── Helper: total hours for a list of publicIds ───────────────────────────
+async function getVideosDurationHours(publicIds: string[]): Promise<number> {
+  if (publicIds.length === 0) return 0;
+  const seconds = await Promise.all(publicIds.map(getVideoDurationSeconds));
+  const total = seconds.reduce((sum, s) => sum + s, 0);
+  console.log(`⏱ Video durations (seconds):`, seconds, `→ total hours: ${total / 3600}`);
+  return total / 3600;
+}
+
 // CREATE lesson with uploaded files
 export const createLesson = async (req: Request, res: Response) => {
-    try {
-      const courseId = req.params.courseId as string;
-      const { title, description, order } = req.body;
-      const teacherId = (req as any).user.id;  
-      if (!title) {
-        return res.status(400).json({ message: "Title is required." });
-      }
-  
-      const course = await Course.findOne({ _id: courseId, teacherId });
-      if (!course) {
-        return res.status(403).json({ message: "Course not found or unauthorized." });
-      }
-  
-      // ✅ Handle case where no files are uploaded
-      const uploadedFiles = req.files as any[];
-      const files = uploadedFiles && uploadedFiles.length > 0
+  try {
+    const courseId = req.params.courseId as string;
+    const { title, description, order } = req.body;
+    const teacherId = (req as any).user.id;
+
+    if (!title) {
+      return res.status(400).json({ message: "Title is required." });
+    }
+
+    const course = await Course.findOne({ _id: courseId, teacherId });
+    if (!course) {
+      return res.status(403).json({ message: "Course not found or unauthorized." });
+    }
+
+    const uploadedFiles = req.files as any[];
+    const files =
+      uploadedFiles && uploadedFiles.length > 0
         ? uploadedFiles.map((f) => ({
             originalName: f.originalname,
             publicId: f.filename,
@@ -40,55 +72,57 @@ export const createLesson = async (req: Request, res: Response) => {
             size: f.size,
           }))
         : [];
-  
-      const lesson = await Lesson.create({
-        courseId,
-        title,
-        description,
-        order: order || 0,
-        files,
-      });
-      // Auto-update course duration from uploaded video files
-      const videoDurationSeconds = uploadedFiles && uploadedFiles.length > 0
-      ? uploadedFiles
-          .filter((f) => f.mimetype?.startsWith('video/'))
-          .reduce((sum: number, f: any) => sum + (f.duration || 0), 0)
-      : 0;
 
-      if (videoDurationSeconds > 0) {
-      const addedHours = videoDurationSeconds / 3600;
-      await Course.findByIdAndUpdate(courseId, { $inc: { duration: addedHours } });
+    const lesson = await Lesson.create({
+      courseId,
+      title,
+      description,
+      order: order || 0,
+      files,
+    });
+
+    // Query Cloudinary for real duration of uploaded videos
+    const videoPublicIds = (uploadedFiles ?? [])
+      .filter((f) => f.mimetype?.startsWith("video/"))
+      .map((f) => f.filename as string);
+
+    if (videoPublicIds.length > 0) {
+      const addedHours = await getVideosDurationHours(videoPublicIds);
+      if (addedHours > 0) {
+        await Course.findByIdAndUpdate(courseId, { $inc: { duration: addedHours } });
+        console.log(`✅ Course ${courseId} duration +${addedHours}h`);
+      } else {
+        console.warn("⚠️ Could not get video duration from Cloudinary");
       }
-      res.status(201).json(lesson);
-    } catch (err) {
-      console.error("❌ createLesson error:", err);
-      res.status(500).json({ message: "Server error" });
     }
-  };
+
+    res.status(201).json(lesson);
+  } catch (err) {
+    console.error("❌ createLesson error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 // DELETE a lesson (also deletes files from Cloudinary)
 export const deleteLesson = async (req: Request, res: Response) => {
   try {
     const { lessonId } = req.params;
     const lesson = await Lesson.findById(lessonId);
     if (!lesson) return res.status(404).json({ message: "Lesson not found." });
-    // Subtract video durations from course total
-    const videoFiles = lesson.files.filter((f) => f.mimetype?.startsWith('video/'));
-    if (videoFiles.length > 0) {
-      try {
-        const durations = await Promise.all(
-          videoFiles.map((f) =>
-            cloudinary.api.resource(f.publicId, { resource_type: 'video' })
-              .then((info: any) => info.duration || 0)
-              .catch(() => 0)
-          )
-        );
-        const removedHours = durations.reduce((s: number, d: number) => s + d, 0) / 3600;
-        if (removedHours > 0) {
-          await Course.findByIdAndUpdate(lesson.courseId, { $inc: { duration: -removedHours } });
-        }
-      } catch (_) {}
+
+    const videoPublicIds = lesson.files
+      .filter((f) => f.mimetype?.startsWith("video/"))
+      .map((f) => f.publicId);
+
+    if (videoPublicIds.length > 0) {
+      const removedHours = await getVideosDurationHours(videoPublicIds);
+      if (removedHours > 0) {
+        await Course.findByIdAndUpdate(lesson.courseId, {
+          $inc: { duration: -removedHours },
+        });
+      }
     }
-    // Delete each file from Cloudinary
+
     await Promise.all(
       lesson.files.map((f) => {
         const resourceType = f.mimetype === "application/pdf" ? "raw" : "video";
@@ -107,7 +141,9 @@ export const deleteLesson = async (req: Request, res: Response) => {
 export const addFilesToLesson = async (req: Request, res: Response) => {
   try {
     const { lessonId } = req.params;
-    const newFiles = (req.files as any[]).map((f) => ({
+    const uploadedFiles = req.files as any[];
+
+    const newFiles = uploadedFiles.map((f) => ({
       originalName: f.originalname,
       publicId: f.filename,
       url: f.path,
@@ -120,19 +156,20 @@ export const addFilesToLesson = async (req: Request, res: Response) => {
       { $push: { files: { $each: newFiles } } },
       { new: true }
     );
-      // Auto-update course duration from newly uploaded video files
-      const uploadedFiles = req.files as any[];
-      const videoDurationSeconds = uploadedFiles
-        .filter((f) => f.mimetype?.startsWith('video/'))
-        .reduce((sum: number, f: any) => sum + (f.duration || 0), 0);
 
-      if (videoDurationSeconds > 0) {
-        const lesson = await Lesson.findById(lessonId);
-        if (lesson) {
-          const addedHours = videoDurationSeconds / 3600;
-          await Course.findByIdAndUpdate(lesson.courseId, { $inc: { duration: addedHours } });
-        }
+    const videoPublicIds = uploadedFiles
+      .filter((f) => f.mimetype?.startsWith("video/"))
+      .map((f) => f.filename as string);
+
+    if (videoPublicIds.length > 0 && lesson) {
+      const addedHours = await getVideosDurationHours(videoPublicIds);
+      if (addedHours > 0) {
+        await Course.findByIdAndUpdate(lesson.courseId, {
+          $inc: { duration: addedHours },
+        });
       }
+    }
+
     res.json(lesson);
   } catch (err) {
     res.status(500).json({ message: "Server error" });
@@ -151,21 +188,19 @@ export const deleteFileFromLesson = async (req: Request, res: Response) => {
     await Lesson.findByIdAndUpdate(lessonId, {
       $pull: { files: { publicId } },
     });
-    // Subtract video duration from course duration
+
+    if (mimetype?.startsWith("video/")) {
       const lesson = await Lesson.findById(lessonId);
-      if (lesson && mimetype?.startsWith('video/')) {
-        const file = lesson.files.find((f) => f.publicId === publicId);
-        if (file) {
-          // Get duration from Cloudinary
-          try {
-            const info = await cloudinary.api.resource(publicId, { resource_type: 'video' });
-            const removedHours = (info.duration || 0) / 3600;
-            if (removedHours > 0) {
-              await Course.findByIdAndUpdate(lesson.courseId, { $inc: { duration: -removedHours } });
-            }
-          } catch (_) {}
+      if (lesson) {
+        const removedHours = await getVideosDurationHours([publicId]);
+        if (removedHours > 0) {
+          await Course.findByIdAndUpdate(lesson.courseId, {
+            $inc: { duration: -removedHours },
+          });
         }
       }
+    }
+
     res.json({ message: "File deleted." });
   } catch (err) {
     res.status(500).json({ message: "Server error" });
