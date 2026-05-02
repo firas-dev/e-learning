@@ -18,7 +18,6 @@ import profileRoutes from "./routes/profileRoutes";
 import messageRoutes from "./routes/messageRoutes";
 import preferencesRoutes from "./routes/preferences";
 import privateRoomRoutes from "./routes/privateRoomRoutes";
-import challengeRoutes from "./routes/challengeRoutes";
 import adminRoutes from "./routes/adminRoutes";
 import { setIo, startChallengeStatusJob } from "./jobs/challengeStatusJob";
 import reportRoutes from "./routes/reportRoutes";
@@ -130,7 +129,6 @@ app.use("/api/profile", profileRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/preferences", preferencesRoutes);
 app.use("/api/rooms", privateRoomRoutes);
-app.use("/api/rooms/:roomId", challengeRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/reports",  reportRoutes);
 // Test route
