@@ -159,9 +159,9 @@ export const inviteStudents = async (req: Request, res: Response) => {
 
       try {
         await transporter.sendMail({
-          from: `"EduSmart AI" <${process.env.EMAIL_USER}>`,
+          from: `"EduVerse AI" <${process.env.EMAIL_USER}>`,
           to: email,
-          subject: `You've been invited to join "${room.name}" on EduSmart AI`,
+          subject: `You've been invited to join "${room.name}" on EduVerse AI`,
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9fafb; padding: 24px; border-radius: 12px;">
               <div style="background: linear-gradient(135deg, #7c3aed, #6d28d9); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
@@ -185,7 +185,7 @@ export const inviteStudents = async (req: Request, res: Response) => {
                 ${user
                   ? `
                 <p style="color: #374151; font-size: 14px; margin-bottom: 20px;">
-                  Log in to EduSmart AI and go to <strong>Private Rooms</strong> to accept or decline this invitation.
+                  Log in to EduVerse AI and go to <strong>Private Rooms</strong> to accept or decline this invitation.
                 </p>
                 <div style="text-align: center; margin: 24px 0;">
                   <a href="${privateRoomsUrl}"
@@ -196,7 +196,7 @@ export const inviteStudents = async (req: Request, res: Response) => {
                   `
                   : `
                 <p style="color: #374151; font-size: 14px; margin-bottom: 20px;">
-                  You don't have an EduSmart AI account yet. Sign up with this email address and the invitation will be waiting for you.
+                  You don't have an EduVerse AI account yet. Sign up with this email address and the invitation will be waiting for you.
                 </p>
                 <div style="text-align: center; margin: 24px 0;">
                   <a href="${clientUrl}"
@@ -209,7 +209,7 @@ export const inviteStudents = async (req: Request, res: Response) => {
 
                 <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
                 <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">
-                  EduSmart AI — Your AI-Powered Learning Platform
+                  EduVerse AI — Your AI-Powered Learning Platform
                 </p>
               </div>
             </div>

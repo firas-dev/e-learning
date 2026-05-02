@@ -36,7 +36,7 @@ const sendReminders = async (courseId: string, hoursLabel: string) => {
     // ── Email notification ──
     try {
       await transporter.sendMail({
-        from: `"EduSmart AI" <${process.env.EMAIL_USER}>`,
+        from: `"EduVerse AI" <${process.env.EMAIL_USER}>`,
         to: student.email,
         subject: `Reminder: "${course.title}" live session ${hoursLabel}`,
         html: `
@@ -50,9 +50,9 @@ const sendReminders = async (courseId: string, hoursLabel: string) => {
               ? `<p>📆 Scheduled: <strong>${new Date(course.scheduledAt).toLocaleString()}</strong></p>`
               : ''
             }
-            <p>Log in to EduSmart AI to join the session.</p>
+            <p>Log in to EduVerse AI to join the session.</p>
             <br/>
-            <p style="color: #6b7280; font-size: 12px;">EduSmart AI — Your learning companion</p>
+            <p style="color: #6b7280; font-size: 12px;">EduVerse AI — Your learning companion</p>
           </div>
         `,
       });

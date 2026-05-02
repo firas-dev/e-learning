@@ -121,7 +121,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
     });
 
     await transporter.sendMail({
-      from: `"EduSmart AI" <${process.env.EMAIL_USER}>`,
+      from: `"EduVerse AI" <${process.env.EMAIL_USER}>`,
       to: user.email,
       subject: "Password Reset Request",
       html: `

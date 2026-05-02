@@ -17,7 +17,7 @@ export async function sendWarningEmail(
 ) {
   const remaining = 3 - warningNumber;
   await transporter.sendMail({
-    from: `"EduSmart AI" <${process.env.EMAIL_USER}>`,
+    from: `"EduVerse AI" <${process.env.EMAIL_USER}>`,
     to: toEmail,
     subject: `⚠️ Warning ${warningNumber}/3 — Community Guidelines Violation`,
     html: `
@@ -39,7 +39,7 @@ export async function sendWarningEmail(
           <p style="color:#6b7280;font-size:14px">Please review our community guidelines and ensure your contributions are respectful.</p>
         </div>
         <div style="background:#f9fafb;padding:16px 32px;border-top:1px solid #e5e7eb">
-          <p style="color:#9ca3af;font-size:12px;margin:0">EduSmart AI — Community Guidelines Team</p>
+          <p style="color:#9ca3af;font-size:12px;margin:0">EduVerse AI — Community Guidelines Team</p>
         </div>
       </div>
     `,
@@ -56,9 +56,9 @@ export async function sendBanEmail(
     weekday: "long", year: "numeric", month: "long", day: "numeric",
   });
   await transporter.sendMail({
-    from: `"EduSmart AI" <${process.env.EMAIL_USER}>`,
+    from: `"EduVerse AI" <${process.env.EMAIL_USER}>`,
     to: toEmail,
-    subject: `🚫 Account Suspended — EduSmart AI`,
+    subject: `🚫 Account Suspended — EduVerse AI`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb">
         <div style="background:#dc2626;padding:24px 32px">
@@ -81,7 +81,7 @@ export async function sendBanEmail(
           </p>
         </div>
         <div style="background:#f9fafb;padding:16px 32px;border-top:1px solid #e5e7eb">
-          <p style="color:#9ca3af;font-size:12px;margin:0">EduSmart AI — Community Guidelines Team</p>
+          <p style="color:#9ca3af;font-size:12px;margin:0">EduVerse AI — Community Guidelines Team</p>
         </div>
       </div>
     `,

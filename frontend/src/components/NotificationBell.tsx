@@ -1,35 +1,50 @@
 import { useRef, useEffect, useState } from 'react';
-import { Bell, X, CheckCheck, CheckCircle, XCircle, Loader2, Lock } from 'lucide-react';
+import { Bell, X, CheckCheck, CheckCircle, XCircle, Loader2, Lock, AlertTriangle } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import { useStudentRooms } from '../hooks/usePrivateRooms';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigation } from '../contexts/NavigationContext';
 
 // Detect if a notification is a room invitation by its title
 const isRoomInvitation = (title: string) =>
   title.includes('Private Room Invitation');
 
-// Extract roomId from the notification's courseId field
-// (backend stores roomId in courseId for room notifications)
+// Detect if a notification is a warning about a comment
+const isCommentWarning = (title: string) =>
+  title.includes('Warning') || title.includes('⚠️');
+
 function RoomInvitationActions({
   notificationId,
   roomId,
+  alreadyRead,
   onResponded,
 }: {
   notificationId: string;
   roomId: string;
-  onResponded: (notificationId: string) => void;
+  alreadyRead: boolean;
+  onResponded: (notificationId: string, action: 'accepted' | 'declined') => void;
 }) {
   const { respond } = useStudentRooms();
   const [responding, setResponding] = useState<'accept' | 'decline' | null>(null);
   const [done, setDone] = useState<'accepted' | 'declined' | null>(null);
 
+  // If the notification was already read (responded to in a previous session),
+  // show the "Joined the room!" status instead of the buttons
+  if (alreadyRead && !done) {
+    return (
+      <div className="mt-2 text-xs font-semibold flex items-center gap-1 text-green-600">
+        <CheckCircle className="w-3.5 h-3.5" /> Joined the room!
+      </div>
+    );
+  }
+
   const handleRespond = async (action: 'accept' | 'decline') => {
     setResponding(action);
     try {
       await respond(roomId, action);
-      setDone(action === 'accept' ? 'accepted' : 'declined');
-      // Give a moment for the user to see the result, then mark notification as read
-      setTimeout(() => onResponded(notificationId), 1200);
+      const result = action === 'accept' ? 'accepted' : 'declined';
+      setDone(result);
+      setTimeout(() => onResponded(notificationId, result), 1200);
     } catch (err) {
       console.error(err);
     } finally {
@@ -78,10 +93,14 @@ function RoomInvitationActions({
 
 export default function NotificationBell() {
   const { user } = useAuth();
+  const { setCurrentPage } = useNavigation();
   const {
     notifications, unreadCount, open, setOpen,
     markAsRead, markAllAsRead,
   } = useNotifications();
+
+  // Track locally which invitation notifications were just accepted
+  const [acceptedIds, setAcceptedIds] = useState<Set<string>>(new Set());
 
   const ref = useRef<HTMLDivElement>(null);
 
@@ -96,6 +115,31 @@ export default function NotificationBell() {
   }, []);
 
   const isStudent = user?.role === 'student';
+
+  const handleInvitationResponded = (id: string, action: 'accepted' | 'declined') => {
+    if (action === 'accepted') {
+      setAcceptedIds((prev) => new Set(prev).add(id));
+    }
+    markAsRead(id);
+  };
+
+  const handleWarningClick = (n: { _id: string; courseId?: string; read: boolean }) => {
+    if (!n.read) markAsRead(n._id);
+    // courseId on warning notifications is actually the courseId of the reported comment
+    if (n.courseId) {
+      // Store the course and navigate to it
+      const stored = sessionStorage.getItem('selectedCourse');
+      const existing = stored ? JSON.parse(stored) : null;
+      if (!existing || existing.id !== n.courseId) {
+        sessionStorage.setItem(
+          'selectedCourse',
+          JSON.stringify({ id: n.courseId, title: 'Course', type: 'recorded' })
+        );
+      }
+      setCurrentPage('recorded-course');
+      setOpen(false);
+    }
+  };
 
   return (
     <div className="relative" ref={ref}>
@@ -144,22 +188,52 @@ export default function NotificationBell() {
             ) : (
               notifications.map((n) => {
                 const isInvite = isStudent && isRoomInvitation(n.title);
+                const isWarning = isStudent && isCommentWarning(n.title);
+                // An invitation is "responded" if it's been read (either now or previously)
+                const wasAccepted = acceptedIds.has(n._id);
+
+                // Background logic:
+                // - Just accepted invitation → green
+                // - Unread non-invite → blue
+                // - Otherwise → white
+                const bgClass = wasAccepted
+                  ? 'bg-green-50'
+                  : !n.read
+                  ? 'bg-blue-50'
+                  : '';
 
                 return (
                   <div
                     key={n._id}
                     onClick={() => {
-                      if (!isInvite && !n.read) markAsRead(n._id);
+                      if (isWarning) {
+                        handleWarningClick(n);
+                      } else if (!isInvite && !n.read) {
+                        markAsRead(n._id);
+                      }
                     }}
                     className={`px-4 py-3 transition-colors ${
-                      isInvite ? 'cursor-default' : 'cursor-pointer hover:bg-gray-50'
-                    } ${!n.read ? 'bg-blue-50' : ''}`}
+                      isInvite && !n.read
+                        ? 'cursor-default'
+                        : isWarning
+                        ? 'cursor-pointer hover:bg-yellow-50'
+                        : 'cursor-pointer hover:bg-gray-50'
+                    } ${bgClass}`}
                   >
                     <div className="flex items-start gap-3">
-                      {/* Unread dot or room icon */}
+                      {/* Icon */}
                       {isInvite ? (
-                        <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <Lock className="w-3.5 h-3.5 text-violet-600" />
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                          wasAccepted || n.read ? 'bg-green-100' : 'bg-violet-100'
+                        }`}>
+                          {wasAccepted || n.read
+                            ? <CheckCircle className="w-3.5 h-3.5 text-green-600" />
+                            : <Lock className="w-3.5 h-3.5 text-violet-600" />
+                          }
+                        </div>
+                      ) : isWarning ? (
+                        <div className="w-7 h-7 rounded-lg bg-yellow-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <AlertTriangle className="w-3.5 h-3.5 text-yellow-600" />
                         </div>
                       ) : (
                         <div className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${
@@ -174,16 +248,22 @@ export default function NotificationBell() {
                         <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
                           {n.message}
                         </p>
+                        {isWarning && n.courseId && (
+                          <p className="text-xs text-yellow-600 mt-1 font-medium">
+                            Tap to view the comment →
+                          </p>
+                        )}
                         <p className="text-xs text-gray-400 mt-1">
                           {new Date(n.createdAt).toLocaleString()}
                         </p>
 
-                        {/* Accept / Decline buttons for room invitations */}
+                        {/* Accept / Decline buttons — only when NOT yet responded */}
                         {isInvite && n.courseId && (
                           <RoomInvitationActions
                             notificationId={n._id}
                             roomId={n.courseId}
-                            onResponded={(id) => markAsRead(id)}
+                            alreadyRead={n.read}
+                            onResponded={handleInvitationResponded}
                           />
                         )}
                       </div>

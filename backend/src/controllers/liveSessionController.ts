@@ -10,7 +10,7 @@ export const startSession = async (req: Request, res: Response) => {
     const { courseId, title } = req.body;
 
     // Generate unique Jitsi room ID
-    const jitsiRoomId = `edusmart-${courseId}-${crypto.randomBytes(6).toString("hex")}`;
+    const jitsiRoomId = `eduverse-${courseId}-${crypto.randomBytes(6).toString("hex")}`;
 
     const session = await LiveSession.create({
       courseId,
