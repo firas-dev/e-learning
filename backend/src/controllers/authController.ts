@@ -44,23 +44,48 @@ export const register = async (req: Request, res: Response) => {
 export const login = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
-
+ 
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ message: "Invalid credentials" });
-
+ 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
-
+ 
+    // ── Auto-unban if ban period expired ────────────────────────────────
+    if ((user as any).isBanned && (user as any).banExpiresAt) {
+      if (new Date() > (user as any).banExpiresAt) {
+        await User.findByIdAndUpdate(user._id, {
+          isBanned: false,
+          banExpiresAt: undefined,
+        });
+        (user as any).isBanned = false;
+        (user as any).banExpiresAt = undefined;
+      }
+    }
+ 
     const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, {
       expiresIn: "7d",
     });
-
-    res.json({ token, user: { email: user.email, fullName: user.fullName, role: user.role, _id: user._id } });
+ 
+    // Return ban info so frontend can show the BannedScreen
+    res.json({
+      token,
+      user: {
+        email:        user.email,
+        fullName:     user.fullName,
+        role:         user.role,
+        _id:          user._id,
+        isBanned:     (user as any).isBanned     ?? false,
+        banExpiresAt: (user as any).banExpiresAt ?? null,
+        warningCount: (user as any).warningCount ?? 0,
+      },
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 
 

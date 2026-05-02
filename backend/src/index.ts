@@ -21,6 +21,7 @@ import privateRoomRoutes from "./routes/privateRoomRoutes";
 import challengeRoutes from "./routes/challengeRoutes";
 import adminRoutes from "./routes/adminRoutes";
 import { setIo, startChallengeStatusJob } from "./jobs/challengeStatusJob";
+import reportRoutes from "./routes/reportRoutes";
 
 
 connectDB();
@@ -131,7 +132,7 @@ app.use("/api/preferences", preferencesRoutes);
 app.use("/api/rooms", privateRoomRoutes);
 app.use("/api/rooms/:roomId", challengeRoutes);
 app.use("/api/admin", adminRoutes);
-
+app.use("/api/reports",  reportRoutes);
 // Test route
 app.get("/", (req: Request, res: Response) => {
   res.send("API is running...");

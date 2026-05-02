@@ -1,9 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import User from "../models/User";
+
 const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey";
-
-
 
 export const protect = async (req: Request, res: Response, next: NextFunction) => {
   const token = req.headers.authorization?.split(" ")[1];
@@ -11,11 +10,24 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as any;
-    
-    // Check if user is banned
-    const user = await User.findById(decoded.id).select("isBanned role");
+
+    const user = await User.findById(decoded.id).select("isBanned banExpiresAt role");
     if (!user) return res.status(401).json({ message: "User not found." });
-    if (user.isBanned) return res.status(403).json({ message: "Your account has been suspended." });
+
+    // ── Auto-unban: if ban period has expired, lift it ────────────────────
+    if (user.isBanned && user.banExpiresAt && new Date() > user.banExpiresAt) {
+      await User.findByIdAndUpdate(decoded.id, {
+        isBanned: false,
+        banExpiresAt: undefined,
+      });
+      // Allow the request through
+    } else if (user.isBanned) {
+      return res.status(403).json({
+        message: "Your account has been suspended.",
+        isBanned: true,
+        banExpiresAt: user.banExpiresAt,
+      });
+    }
 
     (req as any).user = decoded;
     next();

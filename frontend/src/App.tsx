@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
+import BannedScreen from './pages/BannedScreen';
 import { NavigationProvider } from './contexts/NavigationContext';
 import StudentDashboard from './pages/StudentDashboard';
 import TeacherDashboard from './pages/TeacherDashboard';
@@ -43,7 +44,6 @@ function AppContent() {
     return stored ? JSON.parse(stored) : null;
   });
 
-  // Teacher public profile — stores the teacher's userId
   const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(() => {
     return sessionStorage.getItem('selectedTeacherId') || null;
   });
@@ -79,11 +79,11 @@ function AppContent() {
     handleSetCurrentPage('teacher-public-profile');
   };
 
-  const handleGoToMessages = (teacherId?: string) => {
+  const handleGoToMessages = (_teacherId?: string) => {
     handleSetCurrentPage('messages');
-    // Could pre-select conversation — for now just opens messages
   };
 
+  // ── Loading ────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -95,6 +95,7 @@ function AppContent() {
     );
   }
 
+  // ── Password reset page ────────────────────────────────────────────────
   if (isResetPage) {
     return (
       <ResetPassword
@@ -106,6 +107,7 @@ function AppContent() {
     );
   }
 
+  // ── Not authenticated ──────────────────────────────────────────────────
   if (!user) {
     sessionStorage.removeItem('currentPage');
     sessionStorage.removeItem('selectedCourse');
@@ -114,6 +116,12 @@ function AppContent() {
     return <Login />;
   }
 
+  // ── BANNED — show suspended screen, nothing else ───────────────────────
+  if (user.isBanned) {
+    return <BannedScreen banExpiresAt={user.banExpiresAt ?? null} />;
+  }
+
+  // ── PDF Viewer ─────────────────────────────────────────────────────────
   if (currentPage === 'pdf-viewer' && selectedPDF) {
     return (
       <NavigationProvider currentPage={currentPage} setCurrentPage={handleSetCurrentPage}>
@@ -127,6 +135,7 @@ function AppContent() {
     );
   }
 
+  // ── Course Lessons ─────────────────────────────────────────────────────
   if (currentPage === 'course-lessons' && selectedCourse) {
     return (
       <NavigationProvider currentPage={currentPage} setCurrentPage={handleSetCurrentPage}>
@@ -135,6 +144,7 @@ function AppContent() {
     );
   }
 
+  // ── Live Class ─────────────────────────────────────────────────────────
   if (currentPage === 'live-class' && selectedCourse) {
     return (
       <NavigationProvider currentPage={currentPage} setCurrentPage={handleSetCurrentPage}>
@@ -143,6 +153,7 @@ function AppContent() {
     );
   }
 
+  // ── Recorded Course ────────────────────────────────────────────────────
   if (currentPage === 'recorded-course' && selectedCourse) {
     return (
       <NavigationProvider currentPage={currentPage} setCurrentPage={handleSetCurrentPage}>
@@ -156,7 +167,7 @@ function AppContent() {
     );
   }
 
-  // Teacher public profile — accessible to students only
+  // ── Teacher public profile ─────────────────────────────────────────────
   if (currentPage === 'teacher-public-profile' && selectedTeacherId && user.role === 'student') {
     return (
       <NavigationProvider currentPage={currentPage} setCurrentPage={handleSetCurrentPage}>
@@ -168,6 +179,7 @@ function AppContent() {
     );
   }
 
+  // ── Main app ───────────────────────────────────────────────────────────
   return (
     <NavigationProvider currentPage={currentPage} setCurrentPage={handleSetCurrentPage}>
       {currentPage === 'dashboard' && user?.role === 'student' && (
@@ -178,7 +190,6 @@ function AppContent() {
           }}
         />
       )}
-
       {currentPage === 'dashboard' && user?.role === 'teacher' && (
         <TeacherDashboard
           onOpenCourse={(id, title, type) => {
@@ -187,22 +198,16 @@ function AppContent() {
           }}
         />
       )}
-
       {currentPage === 'dashboard' && user?.role === 'admin' && <AdminDashboard />}
-      {currentPage === 'catalog' && user?.role === 'student' && (
+      {currentPage === 'catalog'   && user?.role === 'student' && (
         <CourseCatalog onViewTeacherProfile={handleViewTeacherProfile} />
       )}
-      {currentPage === 'privacy' && <PrivacySettings />}
-      {currentPage === 'profile' && user?.role === 'teacher' && <TeacherProfile />}
-      {currentPage === 'profile' && user?.role === 'student' && <StudentProfile />}
-      {currentPage === 'messages' && <Messaging />}
-      {currentPage === 'private-rooms' && user?.role === 'teacher' && (
-        <TeacherPrivateRooms />
-      )}
-      {currentPage === 'private-rooms' && user?.role === 'student' && (
-        <StudentPrivateRooms />
-      )}
-      {currentPage === ''}
+      {currentPage === 'privacy'   && <PrivacySettings />}
+      {currentPage === 'profile'   && user?.role === 'teacher' && <TeacherProfile />}
+      {currentPage === 'profile'   && user?.role === 'student' && <StudentProfile />}
+      {currentPage === 'messages'  && <Messaging />}
+      {currentPage === 'private-rooms' && user?.role === 'teacher' && <TeacherPrivateRooms />}
+      {currentPage === 'private-rooms' && user?.role === 'student' && <StudentPrivateRooms />}
     </NavigationProvider>
   );
 }

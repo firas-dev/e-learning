@@ -7,6 +7,8 @@ export interface IUser {
   fullName?: string;
   role: "student" | "teacher" | "admin";
   isBanned?: boolean;
+  banExpiresAt?: Date;          // auto-unban date (1 week from ban)
+  warningCount?: number;        // 0-2 warnings; 3rd = auto-ban
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
   createdAt?: Date;
@@ -15,7 +17,7 @@ export interface IUser {
 
 const userSchema = new Schema<IUser>(
   {
-    email: { type: String, required: true, unique: true },
+    email:    { type: String, required: true, unique: true },
     password: { type: String, required: true },
     fullName: { type: String },
     role: {
@@ -23,9 +25,11 @@ const userSchema = new Schema<IUser>(
       enum: ["student", "teacher", "admin"],
       default: "student",
     },
-    isBanned: { type: Boolean, default: false },
-    resetPasswordToken: { type: String, default: undefined },
-    resetPasswordExpires: { type: Date, default: undefined },
+    isBanned:     { type: Boolean, default: false },
+    banExpiresAt: { type: Date, default: undefined },
+    warningCount: { type: Number, default: 0 },
+    resetPasswordToken:    { type: String, default: undefined },
+    resetPasswordExpires:  { type: Date,   default: undefined },
   },
   { timestamps: true }
 );

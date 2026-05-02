@@ -6,6 +6,7 @@ import AnalyticsTab from "../components/admin/tabs/AnalyticsTab";
 import UsersTab from "../components/admin/tabs/UsersTab";
 import CoursesTab from "../components/admin/tabs/CoursesTab";
 import AnnouncementsTab from "../components/admin/tabs/AnnouncementsTab";
+import ReportsTab from "../components/admin/tabs/ReportsTab";
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -19,17 +20,16 @@ export default function AdminDashboard() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
-
-
         {/* Page Content */}
         <div className="flex-1 overflow-y-auto p-3">
 
           <AdminHeader user={user} />
 
-          {activeTab === "analytics" && <AnalyticsTab />}
-          {activeTab === "users" && <UsersTab />}
-          {activeTab === "courses" && <CoursesTab />}
-          {activeTab === "announcements" && <AnnouncementsTab />}
+          {activeTab === "analytics"    && <AnalyticsTab />}
+          {activeTab === "users"        && <UsersTab />}
+          {activeTab === "courses"      && <CoursesTab />}
+          {activeTab === "announcements"&& <AnnouncementsTab />}
+          {activeTab === "reports"      && <ReportsTab />}
 
         </div>
       </div>

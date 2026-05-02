@@ -8,48 +8,37 @@ import {
 import type { ReactNode } from "react";
 import axios from "axios";
 
-// ✅ API URL
 const API = "http://localhost:5000/api/auth";
 
-// ✅ Types
+// ── Types ────────────────────────────────────────────────────────────────
 interface User {
   _id: string;
   email: string;
   fullName: string;
   role: "student" | "teacher" | "admin";
+  isBanned?: boolean;
+  banExpiresAt?: string | null;
+  warningCount?: number;
 }
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-
-  signIn: (email: string, password: string) => Promise<void>;
-  signUp: (
-    email: string,
-    password: string,
-    fullName: string,
-    role: "student" | "teacher" | "admin"
-  ) => Promise<void>;
-
+  signIn:  (email: string, password: string) => Promise<void>;
+  signUp:  (email: string, password: string, fullName: string, role: "student" | "teacher" | "admin") => Promise<void>;
   signOut: () => void;
-
-  // 🆕 Password reset
   forgotPassword: (email: string) => Promise<void>;
-  resetPassword: (token: string, newPassword: string) => Promise<void>;
+  resetPassword:  (token: string, newPassword: string) => Promise<void>;
 }
 
-// ✅ Context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// ✅ Provider
+// ── Provider ─────────────────────────────────────────────────────────────
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // Ref to the interceptor ID so we can eject it on unmount
   const interceptorRef = useRef<number | null>(null);
 
-  // Internal sign-out logic (no circular dependency)
   const clearSession = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
@@ -61,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  // 🔁 Load user from localStorage on refresh + register interceptor
+  // Load session on mount
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
     const token = localStorage.getItem("token");
@@ -70,20 +59,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(JSON.parse(storedUser));
       axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
     }
-
     setLoading(false);
 
-    // ── Axios response interceptor ──────────────────────────────────
-    // Catches 401 (Unauthorized / invalid token) responses globally
-    // and automatically signs the user out + redirects to login.
+    // Axios interceptor — handle 401 / suspension 403
     interceptorRef.current = axios.interceptors.response.use(
       (response) => response,
       (error) => {
-        const status = error?.response?.status;
+        const status  = error?.response?.status;
         const message: string = error?.response?.data?.message ?? "";
 
-        // 401 always means unauthenticated
-        // 403 only when it's a token / suspension issue (not a permissions error)
         const isAuthError =
           status === 401 ||
           (status === 403 &&
@@ -91,22 +75,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               message.toLowerCase().includes("suspended") ||
               message.toLowerCase().includes("banned")));
 
-        if (isAuthError) {
-          // Only act if there's currently a stored session to avoid
-          // interfering with login-page requests that legitimately 401.
-          const hasSession = !!localStorage.getItem("token");
-          if (hasSession) {
-            clearSession();
-            // Let the router / App component react to user becoming null.
-            // No hard redirect needed — App already renders <Login /> when !user.
+        // If banned 403 comes back, update local user state to show BannedScreen
+        // without fully logging out (so they can see the countdown)
+        if (status === 403 && error?.response?.data?.isBanned) {
+          const stored = localStorage.getItem("user");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            const updated = {
+              ...parsed,
+              isBanned: true,
+              banExpiresAt: error.response.data.banExpiresAt ?? null,
+            };
+            localStorage.setItem("user", JSON.stringify(updated));
+            setUser(updated);
           }
+          return Promise.reject(error);
+        }
+
+        if (isAuthError) {
+          const hasSession = !!localStorage.getItem("token");
+          if (hasSession) clearSession();
         }
 
         return Promise.reject(error);
       }
     );
 
-    // Eject the interceptor when the provider unmounts
     return () => {
       if (interceptorRef.current !== null) {
         axios.interceptors.response.eject(interceptorRef.current);
@@ -115,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 🔐 SIGN IN
+  // ── SIGN IN ──────────────────────────────────────────────────────────
   const signIn = async (email: string, password: string) => {
     const res = await axios.post(`${API}/login`, { email, password });
     const { token, user } = res.data;
@@ -127,20 +121,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(user);
   };
 
-  // 📝 SIGN UP
+  // ── SIGN UP ──────────────────────────────────────────────────────────
   const signUp = async (
     email: string,
     password: string,
     fullName: string,
     role: "student" | "teacher" | "admin"
   ) => {
-    const res = await axios.post(`${API}/register`, {
-      email,
-      password,
-      fullName,
-      role,
-    });
-
+    const res = await axios.post(`${API}/register`, { email, password, fullName, role });
     const { token, user } = res.data;
 
     localStorage.setItem("token", token);
@@ -150,46 +138,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(user);
   };
 
-  // 🚪 SIGN OUT
-  const signOut = () => {
-    clearSession();
-  };
+  // ── SIGN OUT ─────────────────────────────────────────────────────────
+  const signOut = () => { clearSession(); };
 
-  // 📧 FORGOT PASSWORD (send reset email)
+  // ── FORGOT PASSWORD ──────────────────────────────────────────────────
   const forgotPassword = async (email: string) => {
     await axios.post(`${API}/forgot-password`, { email });
   };
 
-  // 🔑 RESET PASSWORD (with token)
+  // ── RESET PASSWORD ───────────────────────────────────────────────────
   const resetPassword = async (token: string, newPassword: string) => {
-    await axios.post(`${API}/reset-password`, {
-      token,
-      password: newPassword,
-    });
+    await axios.post(`${API}/reset-password`, { token, password: newPassword });
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        signIn,
-        signUp,
-        signOut,
-        forgotPassword,
-        resetPassword,
-      }}
-    >
+    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut, forgotPassword, resetPassword }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-// ✅ Hook
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used inside AuthProvider");
-  }
+  if (!context) throw new Error("useAuth must be used inside AuthProvider");
   return context;
 }
