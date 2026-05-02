@@ -266,7 +266,7 @@ export const getStudentInvitations = async (req: Request, res: Response) => {
 // ── PATCH /api/rooms/:roomId/respond — Student accepts or declines ────────
 export const respondToInvitationPatched = async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
+    const tokenUser = (req as any).user;          // only has: id, role
     const { roomId } = req.params;
     const { action } = req.body;
  
@@ -274,11 +274,15 @@ export const respondToInvitationPatched = async (req: Request, res: Response) =>
       return res.status(400).json({ message: "Invalid action." });
     }
  
+    // Fetch the full user to get their email (JWT payload only contains id + role)
+    const fullUser = await User.findById(tokenUser.id).select("email fullName");
+    if (!fullUser) return res.status(404).json({ message: "User not found." });
+ 
     const room = await PrivateRoom.findById(roomId);
     if (!room) return res.status(404).json({ message: "Room not found." });
  
     const invite = room.invitedEmails.find(
-      (i) => i.email === user.email && i.status === "pending"
+      (i) => i.email === fullUser.email && i.status === "pending"
     );
     if (!invite) {
       return res.status(404).json({ message: "Invitation not found or already responded." });
@@ -286,17 +290,16 @@ export const respondToInvitationPatched = async (req: Request, res: Response) =>
  
     invite.status      = action === "accept" ? "accepted" : "declined";
     invite.respondedAt = new Date();
-    invite.studentId   = new mongoose.Types.ObjectId(user.id);
+    invite.studentId   = new mongoose.Types.ObjectId(tokenUser.id);
  
     if (action === "accept") {
-      const alreadyMember = room.members.some((m) => String(m) === String(user.id));
+      const alreadyMember = room.members.some((m) => String(m) === String(tokenUser.id));
       if (!alreadyMember) {
-        room.members.push(new mongoose.Types.ObjectId(user.id));
+        room.members.push(new mongoose.Types.ObjectId(tokenUser.id));
       }
  
-      // ── Auto-create gamification record ──────────────────────────────
       await RoomStudent.updateOne(
-        { studentId: user.id, roomId },
+        { studentId: tokenUser.id, roomId },
         {
           $setOnInsert: {
             totalPoints:         0,
@@ -320,7 +323,7 @@ export const respondToInvitationPatched = async (req: Request, res: Response) =>
         await Notification.create({
           userId:   teacher._id,
           title:    "✅ Invitation Accepted",
-          message:  `${user.fullName || user.email} joined your private room "${room.name}".`,
+          message:  `${fullUser.fullName || fullUser.email} joined your private room "${room.name}".`,
           courseId: room._id as any,
         });
       }
@@ -333,6 +336,7 @@ export const respondToInvitationPatched = async (req: Request, res: Response) =>
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 // ── DELETE /api/rooms/:roomId/members/:memberId — Teacher removes a member
 export const removeMember = async (req: Request, res: Response) => {

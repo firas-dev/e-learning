@@ -3,6 +3,9 @@ import axios from "axios";
 
 const API = "http://localhost:5000/api";
 
+// Helper: all competition endpoints go through /rooms/:roomId/r/
+const R = (roomId: string) => `${API}/rooms/${roomId}/r`;
+
 export interface IChallenge {
   _id: string;
   roomId: string;
@@ -95,9 +98,9 @@ export function useCompetition(roomId: string) {
     if (!roomId) return;
     try {
       const [cRes, aRes, sRes] = await Promise.all([
-        axios.get(`${API}/rooms/${roomId}/challenges`),
-        axios.get(`${API}/rooms/${roomId}/announcements`),
-        axios.get(`${API}/rooms/${roomId}/my-stats`),
+        axios.get(`${R(roomId)}/challenges`),
+        axios.get(`${R(roomId)}/announcements`),
+        axios.get(`${R(roomId)}/my-stats`),
       ]);
       setChallenges(cRes.data);
       setAnnouncements(aRes.data);
@@ -113,26 +116,26 @@ export function useCompetition(roomId: string) {
 
   // ── Challenge actions ────────────────────────────────────────────
   const createChallenge = async (data: Partial<IChallenge>) => {
-    const res = await axios.post(`${API}/rooms/${roomId}/challenges`, data);
+    const res = await axios.post(`${R(roomId)}/challenges`, data);
     setChallenges((prev) => [...prev, res.data]);
     return res.data as IChallenge;
   };
 
   const updateChallenge = async (challengeId: string, data: Partial<IChallenge>) => {
-    const res = await axios.patch(`${API}/rooms/${roomId}/challenges/${challengeId}`, data);
+    const res = await axios.patch(`${R(roomId)}/challenges/${challengeId}`, data);
     setChallenges((prev) => prev.map((c) => (c._id === challengeId ? res.data : c)));
     return res.data as IChallenge;
   };
 
   const deleteChallenge = async (challengeId: string) => {
-    await axios.delete(`${API}/rooms/${roomId}/challenges/${challengeId}`);
+    await axios.delete(`${R(roomId)}/challenges/${challengeId}`);
     setChallenges((prev) => prev.filter((c) => c._id !== challengeId));
   };
 
   // ── Submission ───────────────────────────────────────────────────
   const submitChallenge = async (challengeId: string, formData: FormData) => {
     const res = await axios.post(
-      `${API}/rooms/${roomId}/challenges/${challengeId}/submit`,
+      `${R(roomId)}/challenges/${challengeId}/submit`,
       formData,
       { headers: { "Content-Type": "multipart/form-data" } }
     );
@@ -142,7 +145,7 @@ export function useCompetition(roomId: string) {
 
   const getMySubmission = async (challengeId: string): Promise<ISubmission | null> => {
     try {
-      const res = await axios.get(`${API}/rooms/${roomId}/challenges/${challengeId}/my-submission`);
+      const res = await axios.get(`${R(roomId)}/challenges/${challengeId}/my-submission`);
       return res.data;
     } catch {
       return null;
@@ -151,41 +154,41 @@ export function useCompetition(roomId: string) {
 
   // ── Leaderboard ──────────────────────────────────────────────────
   const getRoomLeaderboard = async (): Promise<ILeaderboardEntry[]> => {
-    const res = await axios.get(`${API}/rooms/${roomId}/leaderboard`);
+    const res = await axios.get(`${R(roomId)}/leaderboard`);
     return res.data;
   };
 
   const getChallengeLeaderboard = async (challengeId: string) => {
-    const res = await axios.get(`${API}/rooms/${roomId}/challenges/${challengeId}/leaderboard`);
+    const res = await axios.get(`${R(roomId)}/challenges/${challengeId}/leaderboard`);
     return res.data;
   };
 
   // ── Timer ────────────────────────────────────────────────────────
   const startTimer = async (challengeId: string) => {
-    const res = await axios.post(`${API}/rooms/${roomId}/challenges/${challengeId}/timer/start`);
+    const res = await axios.post(`${R(roomId)}/challenges/${challengeId}/timer/start`);
     return res.data as { expiresAt: string; alreadyStarted: boolean };
   };
 
   // ── Hints ────────────────────────────────────────────────────────
   const getHints = async (challengeId: string) => {
-    const res = await axios.get(`${API}/rooms/${roomId}/challenges/${challengeId}/hints`);
+    const res = await axios.get(`${R(roomId)}/challenges/${challengeId}/hints`);
     return res.data as { index: number; pointsCost: number; revealed: boolean; text?: string }[];
   };
 
   const useHint = async (challengeId: string, hintIndex: number) => {
-    const res = await axios.post(`${API}/rooms/${roomId}/challenges/${challengeId}/hints/${hintIndex}/use`);
+    const res = await axios.post(`${R(roomId)}/challenges/${challengeId}/hints/${hintIndex}/use`);
     await fetchAll();
     return res.data as { hint: string; pointsDeducted: number };
   };
 
   // ── Threads ──────────────────────────────────────────────────────
   const getThreads = async (challengeId: string): Promise<IThread[]> => {
-    const res = await axios.get(`${API}/rooms/${roomId}/challenges/${challengeId}/threads`);
+    const res = await axios.get(`${R(roomId)}/challenges/${challengeId}/threads`);
     return res.data;
   };
 
   const postThread = async (challengeId: string, text: string, parentId?: string) => {
-    const res = await axios.post(`${API}/rooms/${roomId}/challenges/${challengeId}/threads`, {
+    const res = await axios.post(`${R(roomId)}/challenges/${challengeId}/threads`, {
       text, parentId,
     });
     return res.data as IThread;
@@ -193,50 +196,50 @@ export function useCompetition(roomId: string) {
 
   const reactToThread = async (challengeId: string, threadId: string, emoji: string) => {
     const res = await axios.post(
-      `${API}/rooms/${roomId}/challenges/${challengeId}/threads/${threadId}/react`,
+      `${R(roomId)}/challenges/${challengeId}/threads/${threadId}/react`,
       { emoji }
     );
     return res.data as IThread;
   };
 
   const deleteThread = async (challengeId: string, threadId: string) => {
-    await axios.delete(`${API}/rooms/${roomId}/challenges/${challengeId}/threads/${threadId}`);
+    await axios.delete(`${R(roomId)}/challenges/${challengeId}/threads/${threadId}`);
   };
 
   // ── Announcements ────────────────────────────────────────────────
   const postAnnouncement = async (data: { title: string; body: string; pinned?: boolean }) => {
-    const res = await axios.post(`${API}/rooms/${roomId}/announcements`, data);
+    const res = await axios.post(`${R(roomId)}/announcements`, data);
     setAnnouncements((prev) => [res.data, ...prev]);
     return res.data as IAnnouncement;
   };
 
   const deleteAnnouncement = async (announcementId: string) => {
-    await axios.delete(`${API}/rooms/${roomId}/announcements/${announcementId}`);
+    await axios.delete(`${R(roomId)}/announcements/${announcementId}`);
     setAnnouncements((prev) => prev.filter((a) => a._id !== announcementId));
   };
 
   // ── Analytics ────────────────────────────────────────────────────
   const getAnalytics = async () => {
-    const res = await axios.get(`${API}/rooms/${roomId}/analytics`);
+    const res = await axios.get(`${R(roomId)}/analytics`);
     return res.data;
   };
 
   // ── Grade submission (teacher) ───────────────────────────────────
   const gradeSubmission = async (challengeId: string, submissionId: string, score: number, feedback: string) => {
     const res = await axios.patch(
-      `${API}/rooms/${roomId}/challenges/${challengeId}/submissions/${submissionId}/grade`,
+      `${R(roomId)}/challenges/${challengeId}/submissions/${submissionId}/grade`,
       { score, feedback }
     );
     return res.data;
   };
 
   const getSubmissions = async (challengeId: string) => {
-    const res = await axios.get(`${API}/rooms/${roomId}/challenges/${challengeId}/submissions`);
+    const res = await axios.get(`${R(roomId)}/challenges/${challengeId}/submissions`);
     return res.data;
   };
 
   const awardPoints = async (studentId: string, points: number, reason: string) => {
-    const res = await axios.post(`${API}/rooms/${roomId}/students/${studentId}/award-points`, {
+    const res = await axios.post(`${R(roomId)}/students/${studentId}/award-points`, {
       points, reason,
     });
     return res.data;

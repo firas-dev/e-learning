@@ -9,6 +9,7 @@ export interface Comment {
   lessonId?: string;
   studentId: string;
   studentName: string;
+  role?: string;
   text: string;
   createdAt: string;
   parentId?: string;

@@ -535,7 +535,6 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF, onVie
                 <CommentsAndRating
                   courseId={courseId}
                   lessonId={currentLesson?._id}
-                  readOnlyMode={isTeacher}
                 />
               </div>
             </div>

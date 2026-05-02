@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import {
   Star, Send, Trash2, MessageSquare, Loader2,
-  CornerDownRight, ChevronDown, ChevronUp,
-  Flag, X, CheckCircle,
+  ChevronDown, ChevronUp, Flag, X, CheckCircle, PenLine,
 } from 'lucide-react';
-import { useComments, Comment } from '../hooks/useComments';
+import { useComments } from '../hooks/useComments';
+import type { Comment } from '../hooks/useComments';
 import { useLessonRating, useCourseRating } from '../hooks/useRating';
 import { useAuth } from '../contexts/AuthContext';
 import { useReportComment } from '../hooks/useReports';
 
-// ── Reusable star row ────────────────────────────────────────────────────
+// ── Reusable star row ─────────────────────────────────────────────────────────
 function StarRow({
   value,
   interactive,
@@ -24,7 +24,6 @@ function StarRow({
   const [hovered, setHovered] = useState(0);
   const display = hovered || value;
   const cls = size === 'sm' ? 'w-4 h-4' : size === 'lg' ? 'w-7 h-7' : 'w-5 h-5';
-
   return (
     <div className="flex gap-0.5">
       {[1, 2, 3, 4, 5].map((s) => (
@@ -44,7 +43,7 @@ function StarRow({
   );
 }
 
-// ── Course-wide average badge ────────────────────────────────────────────
+// ── Course-wide average badge (named export — used by RecordedCourse) ─────────
 export function CourseRatingInline({
   courseId,
   externalAverage,
@@ -61,7 +60,6 @@ export function CourseRatingInline({
   if (loading && externalAverage === undefined) {
     return <div className="flex items-center gap-1 text-gray-300"><Loader2 className="w-3 h-3 animate-spin" /></div>;
   }
-
   return (
     <div className="flex items-center gap-3">
       <span className="text-3xl font-bold text-gray-900 leading-none tabular-nums">
@@ -77,7 +75,7 @@ export function CourseRatingInline({
   );
 }
 
-// ── Lesson rating widget ─────────────────────────────────────────────────
+// ── Lesson rating widget (named export — used by RecordedCourse) ──────────────
 interface LessonRatingProps {
   courseId: string;
   lessonId: string;
@@ -85,44 +83,49 @@ interface LessonRatingProps {
 }
 
 export function LessonRatingWidget({ courseId, lessonId, onCourseUpdate }: LessonRatingProps) {
-  const { user } = useAuth();
-  const { average, count, myStars, loading, submitRating } = useLessonRating(courseId, lessonId);
+  const { average, count, myStars, submitRating } = useLessonRating(courseId, lessonId);
   const [submitting, setSubmitting] = useState(false);
 
-  if (!lessonId) return null;
-  if (user?.role !== 'student') return null;
-
-  const handleRate = async (stars: number) => {
-    if (submitting) return;
+  const handleSelect = async (stars: number) => {
     setSubmitting(true);
     try {
       const result = await submitRating(stars);
       onCourseUpdate?.(result.courseAverage, result.courseCount);
-    } catch (e) {
-      console.error(e);
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (loading) return <div className="h-10 bg-gray-100 rounded-xl animate-pulse" />;
-
   return (
-    <div className="flex items-center gap-4 py-3 px-4 bg-yellow-50 border border-yellow-100 rounded-xl">
-      <div className={`flex items-center gap-2 ${submitting ? 'opacity-50 pointer-events-none' : ''}`}>
-        <span className="text-xs font-medium text-gray-600 whitespace-nowrap">
-          {myStars ? 'Your rating:' : 'Rate this lesson:'}
-        </span>
-        <StarRow value={myStars ?? 0} interactive size="md" onSelect={handleRate} />
-        {myStars && (
-          <span className="text-xs text-green-600 font-medium">✓</span>
-        )}
-      </div>
+    <div className="flex flex-col gap-1.5">
+      <StarRow value={myStars ?? 0} interactive onSelect={handleSelect} size="md" />
+      {submitting && <p className="text-xs text-gray-400">Saving…</p>}
+      {!submitting && count > 0 && (
+        <p className="text-xs text-gray-400">
+          Avg: {average.toFixed(1)} ({count} rating{count !== 1 ? 's' : ''})
+        </p>
+      )}
+      {!submitting && myStars && (
+        <p className="text-xs text-blue-500">Your rating: {myStars}★ (click to change)</p>
+      )}
     </div>
   );
 }
 
-// ── Report modal ─────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const formatDate = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+function Avatar({ name, role }: { name: string; role?: string }) {
+  const color = role === 'teacher' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700';
+  return (
+    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${color}`}>
+      {name?.[0]?.toUpperCase() || 'U'}
+    </div>
+  );
+}
+
+// ── Report modal ──────────────────────────────────────────────────────────────
 function ReportModal({
   comment,
   onClose,
@@ -145,79 +148,56 @@ function ReportModal({
     try {
       await onSubmit(reason.trim());
       setDone(true);
-    } catch (e: any) {
-      setErr(e?.response?.data?.message || 'Failed to submit report.');
+      setTimeout(onClose, 1500);
+    } catch (error: any) {
+      setErr(error?.response?.data?.message || 'Failed to submit report.');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b">
-          <div className="flex items-center gap-2">
-            <Flag className="w-4 h-4 text-red-500" />
-            <h3 className="font-bold text-gray-900 text-sm">Report Inappropriate Comment</h3>
-          </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+            <Flag className="w-4 h-4 text-red-500" /> Report Comment
+          </h3>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
             <X className="w-4 h-4" />
           </button>
         </div>
-
+        <p className="text-xs text-gray-500 mb-4 bg-gray-50 rounded-lg p-3 italic">
+          "{comment.text.slice(0, 80)}{comment.text.length > 80 ? '…' : ''}"
+        </p>
         {done ? (
-          <div className="p-6 text-center">
-            <CheckCircle className="w-10 h-10 text-green-500 mx-auto mb-3" />
-            <p className="font-semibold text-gray-900">Report submitted</p>
-            <p className="text-sm text-gray-500 mt-1">The admin team will review this comment shortly.</p>
-            <button
-              onClick={onClose}
-              className="mt-4 px-5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-colors"
-            >
-              Close
-            </button>
+          <div className="text-center py-4">
+            <CheckCircle className="w-10 h-10 text-green-500 mx-auto mb-2" />
+            <p className="text-sm text-green-600 font-medium">Report submitted successfully.</p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="p-5 space-y-4">
-            {/* Comment preview */}
-            <div className="p-3 bg-red-50 border border-red-100 rounded-xl">
-              <p className="text-xs text-red-500 font-medium mb-1">Comment being reported</p>
-              <p className="text-sm text-gray-700 line-clamp-3 whitespace-pre-line">{comment.text}</p>
-              <p className="text-xs text-gray-400 mt-1.5">by {comment.studentName}</p>
-            </div>
-
-            {/* Reason */}
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Reason <span className="text-red-500">*</span>
-              </label>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">Reason *</label>
               <textarea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                rows={3}
+                required
                 maxLength={500}
-                placeholder="Describe why this comment is inappropriate (e.g. harassment, hate speech, spam)…"
+                rows={3}
+                placeholder="Describe why this comment is inappropriate…"
                 className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-400 focus:border-transparent resize-none text-sm outline-none"
               />
               <p className="text-xs text-gray-400 mt-0.5 text-right">{reason.length}/500</p>
             </div>
-
             {err && <p className="text-xs text-red-500">{err}</p>}
-
             <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-colors"
-              >
+              <button type="button" onClick={onClose}
+                className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-colors">
                 Cancel
               </button>
-              <button
-                type="submit"
-                disabled={submitting || !reason.trim()}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
+              <button type="submit" disabled={submitting || !reason.trim()}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-medium transition-colors disabled:opacity-50">
                 {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Flag className="w-4 h-4" />}
                 Submit Report
               </button>
@@ -229,15 +209,17 @@ function ReportModal({
   );
 }
 
-// ── Single reply bubble ───────────────────────────────────────────────────
+// ── Reply bubble — Facebook style ─────────────────────────────────────────────
 function ReplyBubble({
   reply,
+  parentAuthorName,
   currentUserId,
   currentUserRole,
   onDelete,
   onReport,
 }: {
   reply: Comment;
+  parentAuthorName: string;
   currentUserId: string;
   currentUserRole: string;
   onDelete: (id: string, parentId?: string | null) => void;
@@ -245,51 +227,53 @@ function ReplyBubble({
 }) {
   const isOwner = reply.studentId === currentUserId;
   const canDelete = isOwner || currentUserRole === 'teacher' || currentUserRole === 'admin';
-
-  const formatDate = (iso: string) =>
-    new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const replierRole = (reply as any).role as string | undefined;
+  const isTeacherReply = replierRole === 'teacher';
 
   return (
-    <div className="flex gap-2.5">
-      <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs flex-shrink-0 mt-0.5">
-        {reply.studentName?.[0]?.toUpperCase() || 'U'}
-      </div>
-      <div className="flex-1 min-w-0 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
-        <div className="flex items-center justify-between gap-2 flex-wrap mb-0.5">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-blue-900">{reply.studentName}</span>
-            <span className="text-xs text-gray-400">{formatDate(reply.createdAt)}</span>
+    <div className="flex gap-2.5 group">
+      <Avatar name={reply.studentName} role={replierRole} />
+      <div className="flex-1 min-w-0">
+        <div className="inline-block bg-gray-100 rounded-2xl rounded-tl-sm px-3.5 py-2.5 max-w-full">
+          {/* Name + Author badge */}
+          <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+            <span className="text-xs font-bold text-gray-900">{reply.studentName}</span>
+            {isTeacherReply && (
+              <span className="flex items-center gap-0.5 text-[10px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-full">
+                <PenLine className="w-2.5 h-2.5" /> Author
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-1">
+          {/* Text prefixed with @mention */}
+          <p className="text-sm text-gray-800 break-words leading-relaxed">
+            <span className="font-semibold text-blue-600 mr-1">{parentAuthorName}</span>
+            {reply.text}
+          </p>
+        </div>
+        {/* Meta row */}
+        <div className="flex items-center gap-3 mt-1 px-1">
+          <span className="text-[11px] text-gray-400">{formatDate(reply.createdAt)}</span>
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             {currentUserRole === 'teacher' && onReport && (
-              <button
-                onClick={() => onReport(reply)}
-                className="p-0.5 text-gray-300 hover:text-red-400 transition-colors"
-                title="Report this reply"
-              >
-                <Flag className="w-3 h-3" />
+              <button onClick={() => onReport(reply)}
+                className="text-[11px] text-gray-400 hover:text-red-500 font-medium transition-colors">
+                Report
               </button>
             )}
             {canDelete && (
-              <button
-                onClick={() => onDelete(reply._id, reply.parentId)}
-                className="p-0.5 text-gray-300 hover:text-red-400 transition-colors"
-                title="Delete reply"
-              >
+              <button onClick={() => onDelete(reply._id, reply.parentId)}
+                className="p-0.5 text-gray-300 hover:text-red-400 transition-colors" title="Delete">
                 <Trash2 className="w-3 h-3" />
               </button>
             )}
           </div>
         </div>
-        <p className="text-sm text-gray-700 whitespace-pre-line break-words leading-relaxed">
-          {reply.text}
-        </p>
       </div>
     </div>
   );
 }
 
-// ── Single comment + its replies ─────────────────────────────────────────
+// ── Single comment + its replies ──────────────────────────────────────────────
 function CommentItem({
   comment,
   currentUserId,
@@ -297,7 +281,6 @@ function CommentItem({
   onDelete,
   onReply,
   onReport,
-  depth = 0,
 }: {
   comment: Comment;
   currentUserId: string;
@@ -305,7 +288,6 @@ function CommentItem({
   onDelete: (id: string, parentId?: string | null) => void;
   onReply: (parentId: string, text: string) => Promise<void>;
   onReport: (comment: Comment) => void;
-  depth?: number;
 }) {
   const [showReplyBox, setShowReplyBox] = useState(false);
   const [replyText, setReplyText] = useState('');
@@ -316,12 +298,9 @@ function CommentItem({
   const canDelete = isOwner || currentUserRole === 'teacher' || currentUserRole === 'admin';
   const canReply = currentUserRole === 'teacher' || currentUserRole === 'student';
   const replies = comment.replies || [];
-  const firstReply = replies[0];
-  const remainingReplies = replies.slice(1);
-  const hasMoreReplies = remainingReplies.length > 0;
-
-  const formatDate = (iso: string) =>
-    new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const visibleReplies = showAllReplies ? replies : replies.slice(0, 1);
+  const hiddenCount = replies.length - 1;
+  const commentRole = (comment as any).role as string | undefined;
 
   const handleSubmitReply = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -338,68 +317,61 @@ function CommentItem({
   };
 
   return (
-    <div className={depth > 0 ? 'ml-8 border-l-2 border-blue-100 pl-4' : ''}>
-      {/* Comment bubble */}
+    <div className="group">
+      {/* Main comment bubble */}
       <div className="flex gap-3">
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 ${
-          depth === 0 ? 'bg-gray-100 text-gray-600' : 'bg-blue-100 text-blue-700'
-        }`}>
-          {comment.studentName?.[0]?.toUpperCase() || 'U'}
-        </div>
+        <Avatar name={comment.studentName} role={commentRole} />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-            <span className="text-sm font-semibold text-gray-900">{comment.studentName}</span>
-            <span className="text-xs text-gray-400">{formatDate(comment.createdAt)}</span>
-            {canReply && depth === 0 && (
+          <div className="inline-block bg-gray-100 rounded-2xl rounded-tl-sm px-3.5 py-2.5 max-w-full">
+            <span className="text-xs font-bold text-gray-900 block mb-0.5">{comment.studentName}</span>
+            <p className="text-sm text-gray-800 whitespace-pre-line break-words leading-relaxed">
+              {comment.text}
+            </p>
+          </div>
+          {/* Meta row */}
+          <div className="flex items-center gap-3 mt-1 px-1">
+            <span className="text-[11px] text-gray-400">{formatDate(comment.createdAt)}</span>
+            {canReply && (
               <button
                 onClick={() => setShowReplyBox((v) => !v)}
-                className="text-xs text-blue-500 hover:text-blue-700 font-medium flex items-center gap-1 ml-auto"
+                className="text-[11px] font-semibold text-gray-500 hover:text-blue-600 transition-colors"
               >
-                <CornerDownRight className="w-3 h-3" />
-                {showReplyBox ? 'Cancel' : 'Reply'}
+                Reply
               </button>
             )}
-            {/* Report button — teachers only */}
-            {currentUserRole === 'teacher' && (
-              <button
-                onClick={() => onReport(comment)}
-                className="p-1 text-gray-300 hover:text-red-400 transition-colors"
-                title="Report this comment as inappropriate"
-              >
-                <Flag className="w-3.5 h-3.5" />
-              </button>
-            )}
-            {canDelete && (
-              <button
-                onClick={() => onDelete(comment._id, comment.parentId)}
-                className={`p-1 text-gray-300 hover:text-red-400 transition-colors ${canReply && depth === 0 ? '' : 'ml-auto'}`}
-                title="Delete comment"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            )}
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-auto">
+              {currentUserRole === 'teacher' && (
+                <button onClick={() => onReport(comment)}
+                  className="text-[11px] text-gray-400 hover:text-red-500 font-medium transition-colors">
+                  Report
+                </button>
+              )}
+              {canDelete && (
+                <button onClick={() => onDelete(comment._id, comment.parentId)}
+                  className="p-0.5 text-gray-300 hover:text-red-400 transition-colors" title="Delete">
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              )}
+            </div>
           </div>
-          <p className="text-sm text-gray-700 whitespace-pre-line break-words leading-relaxed">
-            {comment.text}
-          </p>
 
-          {/* Reply box */}
+          {/* Reply input */}
           {showReplyBox && (
-            <form onSubmit={handleSubmitReply} className="mt-3 flex gap-2">
+            <form onSubmit={handleSubmitReply} className="mt-2 flex gap-2 items-center">
               <input
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
-                placeholder="Write a reply…"
+                placeholder={`Reply to ${comment.studentName}…`}
                 maxLength={1000}
-                className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 focus:border-transparent outline-none"
+                autoFocus
+                className="flex-1 px-3 py-1.5 bg-gray-100 border border-gray-200 rounded-full text-sm focus:ring-2 focus:ring-blue-400 focus:border-transparent outline-none"
               />
               <button
                 type="submit"
                 disabled={submittingReply || !replyText.trim()}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
+                className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-colors disabled:opacity-50"
               >
-                {submittingReply ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                Send
+                {submittingReply ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
               </button>
             </form>
           )}
@@ -408,37 +380,26 @@ function CommentItem({
 
       {/* Replies */}
       {replies.length > 0 && (
-        <div className="mt-3 space-y-2.5 pl-11">
-          {firstReply && (
+        <div className="mt-2 ml-11 space-y-2">
+          {visibleReplies.map((r) => (
             <ReplyBubble
-              reply={firstReply}
+              key={r._id}
+              reply={r}
+              parentAuthorName={comment.studentName}
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
               onDelete={onDelete}
               onReport={currentUserRole === 'teacher' ? onReport : undefined}
             />
-          )}
-          {showAllReplies &&
-            remainingReplies.map((r) => (
-              <ReplyBubble
-                key={r._id}
-                reply={r}
-                currentUserId={currentUserId}
-                currentUserRole={currentUserRole}
-                onDelete={onDelete}
-                onReport={currentUserRole === 'teacher' ? onReport : undefined}
-              />
-            ))}
-          {hasMoreReplies && (
+          ))}
+          {hiddenCount > 0 && (
             <button
               onClick={() => setShowAllReplies((v) => !v)}
-              className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1 font-medium"
+              className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors mt-1 ml-1"
             >
-              {showAllReplies ? (
-                <><ChevronUp className="w-3.5 h-3.5" /> Show less</>
-              ) : (
-                <><ChevronDown className="w-3.5 h-3.5" /> Show {remainingReplies.length} more {remainingReplies.length === 1 ? 'reply' : 'replies'}</>
-              )}
+              {showAllReplies
+                ? <><ChevronUp className="w-3.5 h-3.5" /> Hide replies</>
+                : <><ChevronDown className="w-3.5 h-3.5" /> View {hiddenCount} more {hiddenCount === 1 ? 'reply' : 'replies'}</>}
             </button>
           )}
         </div>
@@ -447,7 +408,7 @@ function CommentItem({
   );
 }
 
-// ── Main CommentsAndRating component ─────────────────────────────────────
+// ── Main CommentsAndRating component (default export) ─────────────────────────
 interface CommentsProps {
   courseId: string;
   lessonId?: string;
@@ -485,7 +446,6 @@ export default function CommentsAndRating({ courseId, lessonId, onCourseRatingUp
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-      {/* Report modal */}
       {reportTarget && (
         <ReportModal
           comment={reportTarget}
@@ -508,16 +468,14 @@ export default function CommentsAndRating({ courseId, lessonId, onCourseRatingUp
       {isStudent && !readOnlyMode && (
         <form onSubmit={handleComment} className="mb-6">
           <div className="flex gap-3">
-            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm flex-shrink-0">
-              {user.fullName?.[0]?.toUpperCase() || 'S'}
-            </div>
+            <Avatar name={user.fullName} role="student" />
             <div className="flex-1">
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 rows={2}
                 placeholder="Share your thoughts about this lesson…"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm"
+                className="w-full px-4 py-2 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm"
                 maxLength={1000}
               />
               {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
@@ -525,7 +483,7 @@ export default function CommentsAndRating({ courseId, lessonId, onCourseRatingUp
                 <button
                   type="submit"
                   disabled={submitting || !text.trim()}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                   Post
@@ -541,7 +499,7 @@ export default function CommentsAndRating({ courseId, lessonId, onCourseRatingUp
         <div className="mb-4 px-4 py-2.5 bg-blue-50 border border-blue-100 rounded-lg flex items-center gap-2">
           <MessageSquare className="w-4 h-4 text-blue-500 flex-shrink-0" />
           <p className="text-xs text-blue-700 font-medium">
-            You can reply to student comments, delete inappropriate ones, or{' '}
+            You can reply to student comments and{' '}
             <span className="text-red-500 font-semibold">flag them</span> using the{' '}
             <Flag className="w-3 h-3 inline text-red-400" /> report button to notify the admin.
           </p>

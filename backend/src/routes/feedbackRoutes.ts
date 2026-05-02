@@ -35,13 +35,15 @@ router.post("/:courseId/comments", protect, async (req, res) => {
     if (!text?.trim()) return res.status(400).json({ message: "Text is required" });
 
     const comment = await Comment.create({
-      courseId: req.params.courseId ,
-      lessonId: lessonId || null,
-      parentId: parentId || null,
-      studentId: user.id,
+      courseId:    req.params.courseId,
+      lessonId:    lessonId || null,
+      parentId:    parentId || null,
+      studentId:   user.id,
       studentName: user.fullName || "Student",
-      text: text.trim(),
+      role:        user.role || "student",   // ← ADD THIS LINE
+      text:        text.trim(),
     });
+
     res.status(201).json(comment);
   } catch (err: any) {
     console.error("Error creating comment:", err);
@@ -55,14 +57,22 @@ router.delete("/:courseId/comments/:commentId", protect, async (req, res) => {
     const user = (req as any).user;
     const comment = await Comment.findById(req.params.commentId);
     if (!comment) return res.status(404).json({ message: "Comment not found" });
-    if (comment.studentId.toString() !== user.id)
+ 
+    // Allow: the original author OR a teacher OR an admin
+    const isOwner = comment.studentId.toString() === user.id;
+    const isTeacherOrAdmin = user.role === "teacher" || user.role === "admin";
+ 
+    if (!isOwner && !isTeacherOrAdmin) {
       return res.status(403).json({ message: "Not allowed" });
+    }
+ 
     await comment.deleteOne();
     res.json({ message: "Deleted" });
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }
 });
+
 
 // ── RATINGS ───────────────────────────────────────────────────────────────────
 

@@ -33,10 +33,11 @@ router.patch("/:roomId/respond",                  protect, respondToInvitationPa
 router.get("/:roomId",                            protect, getRoom);
 
 // ── Competition features nested inside each room ──────────────────────────────
-// All routes under /api/rooms/:roomId/* are handled by challengeRoutes
-// e.g. GET /api/rooms/:roomId/challenges
-//      POST /api/rooms/:roomId/challenges/:challengeId/submit
-//      GET  /api/rooms/:roomId/leaderboard
-router.use("/:roomId", challengeRoutes);
+// CRITICAL FIX: Mount under /:roomId/r instead of /:roomId
+// In Express 5, router.use("/:roomId", ...) intercepts ALL requests matching
+// that prefix (including PATCH /:roomId/respond) regardless of method-specific
+// routes defined before it. Using /:roomId/r avoids this conflict entirely.
+// challengeRoutes uses mergeParams:true so :roomId is still accessible.
+router.use("/:roomId/r", challengeRoutes);
 
 export default router;
