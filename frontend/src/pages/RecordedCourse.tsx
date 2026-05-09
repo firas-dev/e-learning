@@ -52,6 +52,7 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF, onVie
     const [addingLesson, setAddingLesson]   = useState(false);
     const [addLessonError, setAddLessonError] = useState('');
     const addLessonFileRef = useRef<HTMLInputElement>(null);
+    const commentsRef = useRef<HTMLDivElement>(null);
 
     const handleAddLesson = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,6 +88,30 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF, onVie
   // Fetch teacher info for this course
   const [teacherInfo, setTeacherInfo] = useState<TeacherInfo | null>(null);
 
+
+  useEffect(() => {
+    if (loading || lessons.length === 0) return;
+   
+    const targetLesson = sessionStorage.getItem('notif_target_lesson');
+    const scrollComments = sessionStorage.getItem('notif_scroll_comments');
+   
+    if (scrollComments) {
+      // Select the target lesson if specified, otherwise keep current
+      if (targetLesson) {
+        const lesson = lessons.find((l) => l._id === targetLesson);
+        if (lesson) setSelectedLesson(lesson._id);
+      }
+   
+      // Clean up flags so they don't trigger again on re-render
+      sessionStorage.removeItem('notif_target_lesson');
+      sessionStorage.removeItem('notif_scroll_comments');
+   
+      // Scroll to comments after a short delay (let the lesson render first)
+      setTimeout(() => {
+        commentsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 400);
+    }
+  }, [loading, lessons]);
   useEffect(() => {
     if (!isStudent || !courseId) return;
     axios.get(`${API}/courses/${courseId}/teacher`)
@@ -532,10 +557,12 @@ export default function RecordedCourse({ courseId, courseTitle, onOpenPDF, onVie
                 </div>
 
                 {/* Discussion / Comments */}
+                <div ref={commentsRef}>
                 <CommentsAndRating
                   courseId={courseId}
                   lessonId={currentLesson?._id}
                 />
+                </div>
               </div>
             </div>
 

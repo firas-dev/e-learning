@@ -6,17 +6,19 @@ export interface INotification {
   title: string;
   message: string;
   courseId: mongoose.Types.ObjectId;
+  lessonId?: mongoose.Types.ObjectId;  // ← NEW: for navigating to specific lesson
   read: boolean;
   createdAt: Date;
 }
 
 const notificationSchema = new Schema<INotification>(
   {
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    title: { type: String, required: true },
-    message: { type: String, required: true },
+    userId:   { type: Schema.Types.ObjectId, ref: "User",   required: true },
+    title:    { type: String, required: true },
+    message:  { type: String, required: true },
     courseId: { type: Schema.Types.ObjectId, ref: "Course" },
-    read: { type: Boolean, default: false },
+    lessonId: { type: Schema.Types.ObjectId, ref: "Lesson" }, // ← NEW
+    read:     { type: Boolean, default: false },
   },
   { timestamps: true }
 );

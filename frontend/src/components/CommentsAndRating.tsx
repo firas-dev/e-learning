@@ -212,14 +212,12 @@ function ReportModal({
 // ── Reply bubble — Facebook style ─────────────────────────────────────────────
 function ReplyBubble({
   reply,
-  parentAuthorName,
   currentUserId,
   currentUserRole,
   onDelete,
   onReport,
 }: {
   reply: Comment;
-  parentAuthorName: string;
   currentUserId: string;
   currentUserRole: string;
   onDelete: (id: string, parentId?: string | null) => void;
@@ -244,9 +242,8 @@ function ReplyBubble({
               </span>
             )}
           </div>
-          {/* Text prefixed with @mention */}
           <p className="text-sm text-gray-800 break-words leading-relaxed">
-            <span className="font-semibold text-blue-600 mr-1">{parentAuthorName}</span>
+            
             {reply.text}
           </p>
         </div>
@@ -385,7 +382,6 @@ function CommentItem({
             <ReplyBubble
               key={r._id}
               reply={r}
-              parentAuthorName={comment.studentName}
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
               onDelete={onDelete}

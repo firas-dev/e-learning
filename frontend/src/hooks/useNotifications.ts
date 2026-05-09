@@ -8,6 +8,7 @@ export interface Notification {
   title: string;
   message: string;
   courseId: string;
+  lessonId?: string;   // ← NEW
   read: boolean;
   createdAt: string;
 }
@@ -44,15 +45,11 @@ export function useNotifications() {
     setUnreadCount(0);
   };
 
-  // Poll every 30 seconds for new notifications
   useEffect(() => {
     fetchNotifications();
     const interval = setInterval(fetchNotifications, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  return {
-    notifications, unreadCount, open, setOpen,
-    markAsRead, markAllAsRead,
-  };
+  return { notifications, unreadCount, open, setOpen, markAsRead, markAllAsRead };
 }
