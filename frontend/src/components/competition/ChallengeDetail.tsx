@@ -74,9 +74,10 @@ export default function ChallengeDetail({
     setLoading(true);
     try {
       const [cRes, sub, lb, h, th] = await Promise.all([
-        fetch(`http://localhost:5000/api/rooms/${roomId}/challenges/${challengeId}`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-        }).then((r) => r.json()),
+        fetch(`http://localhost:5000/api/rooms/${roomId}/r/challenges/${challengeId}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      }).then((r) => r.json()),
+
         getMySubmission(challengeId),
         getChallengeLeaderboard(challengeId),
         getHints(challengeId),

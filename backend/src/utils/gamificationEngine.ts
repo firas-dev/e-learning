@@ -1,4 +1,10 @@
-// backend/src/utils/gamificationEngine.ts
+// ─── gamificationEngine.ts ───────────────────────────────────────────────────
+// Extended with emotion-driven badges and XP multiplier.
+// Changes from original:
+//   • 4 new badge definitions (joy_learner, resilient, fearless, unstoppable)
+//   • BadgeCheckStats extended with emotion fields
+//   • getNewBadges updated with new tryAdd calls
+//   • calculateEmotionXpMultiplier exported for use in awardPointsAndBadges
 
 export type Difficulty = "easy" | "medium" | "hard";
 
@@ -22,6 +28,7 @@ export const POINTS_BY_DIFFICULTY: Record<Difficulty, number> = {
 };
 
 export const BADGE_DEFINITIONS = [
+  // ── Original badges ────────────────────────────────────────────────────────
   { id: "first_blood",    name: "First Blood",    icon: "🩸", description: "First to submit in a challenge" },
   { id: "speed_runner",   name: "Speed Runner",   icon: "⚡", description: "Submit in top 10% fastest" },
   { id: "perfect_score",  name: "Perfect Score",  icon: "💯", description: "100% on a challenge" },
@@ -31,7 +38,32 @@ export const BADGE_DEFINITIONS = [
   { id: "top_3",          name: "Podium",         icon: "🥇", description: "Finish in top 3 of a challenge" },
   { id: "helper",         name: "Helpful",        icon: "🤝", description: "Post 5 helpful replies" },
   { id: "consistent",     name: "Consistent",     icon: "📅", description: "Attempt 5 consecutive challenges" },
-  { id: "veteran",        name: "Veteran",         icon: "🎖️", description: "Reach level 7" },
+  { id: "veteran",        name: "Veteran",        icon: "🎖️", description: "Reach level 7" },
+  // ── New emotion-driven badges ──────────────────────────────────────────────
+  {
+    id: "joy_learner",
+    name: "Joy Learner",
+    icon: "😊",
+    description: "Stay happy for 80%+ of a learning session",
+  },
+  {
+    id: "resilient",
+    name: "Resilient",
+    icon: "💪",
+    description: "Recover from struggling/disengaged to positive in a session",
+  },
+  {
+    id: "fearless",
+    name: "Fearless",
+    icon: "🧠",
+    description: "Complete a hard lesson while fear was detected",
+  },
+  {
+    id: "unstoppable",
+    name: "Unstoppable",
+    icon: "🔥",
+    description: "Recovered from disengaged to positive 3 times",
+  },
 ];
 
 export function calculateLevel(points: number): number {
@@ -43,7 +75,7 @@ export function calculateLevel(points: number): number {
 }
 
 export function getNextLevelThreshold(level: number): number {
-  const next = LEVEL_THRESHOLDS[level]; // index = level (0-based levels are offset by 1)
+  const next = LEVEL_THRESHOLDS[level];
   return next?.minPoints ?? LEVEL_THRESHOLDS[LEVEL_THRESHOLDS.length - 1].minPoints;
 }
 
@@ -67,7 +99,20 @@ export function calculateStreakMultiplier(streak: number): number {
   return 0;
 }
 
+/**
+ * NEW: Returns an XP multiplier based on the student's emotion state during
+ * the session. Applied on top of the streak multiplier in awardPointsAndBadges.
+ *
+ * @param happyRatio - fraction of session detections that were 'happy' (0–1)
+ */
+export function calculateEmotionXpMultiplier(happyRatio: number): number {
+  if (happyRatio >= 0.8) return 0.2;  // +20% XP for very happy session
+  if (happyRatio >= 0.5) return 0.1;  // +10% XP for mostly happy session
+  return 0;
+}
+
 export interface BadgeCheckStats {
+  // ── Original fields ────────────────────────────────────────────────────────
   challengesCompleted: number;
   streak: number;
   hasPerfectScore: boolean;
@@ -77,9 +122,21 @@ export interface BadgeCheckStats {
   helpfulPosts: number;
   level: number;
   challengesAttempted: number;
+  // ── New emotion fields ─────────────────────────────────────────────────────
+  /** Ratio of 'happy' detections in this session (0–1) */
+  happyRatio?: number;
+  /** True if student went from struggling/disengaged → positive in this session */
+  recoveredFromNegative?: boolean;
+  /** True if student completed a hard lesson while fear was detected */
+  completedWhileFearful?: boolean;
+  /** Number of times student recovered from disengaged → positive (lifetime) */
+  angryToHappyRecoveries?: number;
 }
 
-export function getNewBadges(currentBadgeIds: string[], stats: BadgeCheckStats): typeof BADGE_DEFINITIONS {
+export function getNewBadges(
+  currentBadgeIds: string[],
+  stats: BadgeCheckStats
+): typeof BADGE_DEFINITIONS {
   const earned = new Set(currentBadgeIds);
   const newBadges: typeof BADGE_DEFINITIONS = [];
 
@@ -90,6 +147,7 @@ export function getNewBadges(currentBadgeIds: string[], stats: BadgeCheckStats):
     }
   };
 
+  // Original
   tryAdd("first_blood",    stats.isFirstBlood);
   tryAdd("speed_runner",   stats.isSpeedRunner);
   tryAdd("perfect_score",  stats.hasPerfectScore);
@@ -101,6 +159,12 @@ export function getNewBadges(currentBadgeIds: string[], stats: BadgeCheckStats):
   tryAdd("consistent",     stats.challengesAttempted >= 5);
   tryAdd("veteran",        stats.level >= 7);
 
+  // New emotion-driven badges
+  tryAdd("joy_learner",   (stats.happyRatio ?? 0) >= 0.8);
+  tryAdd("resilient",     stats.recoveredFromNegative === true);
+  tryAdd("fearless",      stats.completedWhileFearful === true);
+  tryAdd("unstoppable",   (stats.angryToHappyRecoveries ?? 0) >= 3);
+
   return newBadges;
 }
 
@@ -109,8 +173,8 @@ export function updateStreak(lastActiveDate: Date | undefined): {
 } {
   if (!lastActiveDate) return { current: 1, action: "extended" };
 
-  const today = new Date().toDateString();
-  const last  = new Date(lastActiveDate).toDateString();
+  const today     = new Date().toDateString();
+  const last      = new Date(lastActiveDate).toDateString();
   const yesterday = new Date(Date.now() - 86_400_000).toDateString();
 
   if (last === today)      return { current: 0, action: "same_day" };

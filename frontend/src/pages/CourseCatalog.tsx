@@ -8,6 +8,7 @@ import {
   Search, ChevronLeft, ChevronRight, X, ExternalLink,
 } from 'lucide-react';
 import StarBadge from '../components/StarBadge';
+import CourseDetailsModal from '../components/CourseDetailsModal';
 
 interface CourseCatalogProps {
   onViewTeacherProfile?: (teacherId: string) => void;
@@ -26,6 +27,7 @@ function formatHours(totalHours: number): string {
 
 export default function CourseCatalog({ onViewTeacherProfile }: CourseCatalogProps) {
   const { setCurrentPage } = useNavigation();
+  const [detailId, setDetailId] = useState<string | null>(null);
   const {
     courses, enrolledIds, loading, enrolling,
     enroll, unenroll,
@@ -122,7 +124,8 @@ export default function CourseCatalog({ onViewTeacherProfile }: CourseCatalogPro
                 return (
                   <div
                     key={course._id}
-                    className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow"
+                    onClick={() => setDetailId(String(course._id))}
+                    className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
                   >
                     {/* Card Header */}
                     <div className={`h-36 flex items-center justify-center ${
@@ -162,7 +165,7 @@ export default function CourseCatalog({ onViewTeacherProfile }: CourseCatalogPro
                         {/* Teacher — clickable if onViewTeacherProfile is provided */}
                         {onViewTeacherProfile && course.teacherId ? (
                           <button
-                            onClick={() => onViewTeacherProfile(String(course.teacherId._id))}
+                            onClick={(e) => { e.stopPropagation(); onViewTeacherProfile(String(course.teacherId._id)); }}
                             className="flex items-center gap-1 text-blue-600 hover:text-blue-700 hover:underline transition-colors"
                           >
                             <User className="w-3 h-3" />
@@ -196,7 +199,7 @@ export default function CourseCatalog({ onViewTeacherProfile }: CourseCatalogPro
                             Enrolled
                           </div>
                           <button
-                            onClick={() => unenroll(String(course._id))}
+                            onClick={(e) => { e.stopPropagation(); unenroll(String(course._id)); }}
                             disabled={isLoading}
                             className="w-full py-2 border border-red-300 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                           >
@@ -206,7 +209,7 @@ export default function CourseCatalog({ onViewTeacherProfile }: CourseCatalogPro
                         </div>
                       ) : (
                         <button
-                          onClick={() => enroll(String(course._id))}
+                          onClick={(e) => { e.stopPropagation(); enroll(String(course._id)); }}
                           disabled={isLoading}
                           className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                         >
@@ -257,6 +260,19 @@ export default function CourseCatalog({ onViewTeacherProfile }: CourseCatalogPro
           </>
         )}
       </div>
+
+      {/* Course details popup */}
+      {detailId && (
+        <CourseDetailsModal
+          courseId={detailId}
+          isEnrolled={enrolledIds.includes(detailId)}
+          working={enrolling === detailId}
+          onEnroll={() => enroll(detailId)}
+          onUnenroll={() => unenroll(detailId)}
+          onClose={() => setDetailId(null)}
+          onViewTeacherProfile={onViewTeacherProfile}
+        />
+      )}
     </div>
   );
 }

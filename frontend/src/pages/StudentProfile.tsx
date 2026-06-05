@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useStudentProfile } from '../hooks/useProfile';
@@ -9,8 +10,108 @@ import {
   ArrowLeft, BookOpen, Clock, TrendingUp, CheckCircle,
   Mail, Calendar, Play, Video, Loader2, ChevronDown,
   ChevronUp, MessageSquare, Award, Heart, Zap, Brain,
-  BarChart2, Pencil,
+  BarChart2, Pencil, Smile, Sun,
 } from 'lucide-react';
+import type { RawEmotion, LearningSignal } from '../utils/emotionMapping';
+import { emotionHeatColor } from '../utils/emotionMapping';
+
+const API = 'http://localhost:5000/api';
+
+// ── Types for emotion summary returned by the backend ────────────────────────
+interface EmotionDistEntry {
+  emotion: RawEmotion;
+  displayLabel: string; // student-safe label from server
+  count: number;
+  pct: number;
+}
+
+interface EmotionSummary {
+  hasData: boolean;
+  distribution: EmotionDistEntry[];
+  weekSignals: Record<LearningSignal, number>;
+  bestHour: number | null;
+  totalDetections: number;
+}
+
+// ── Small hook: fetches emotion summary across ALL enrolled courses ───────────
+function useEmotionSummary(enrollments: { id: string; course: { _id: string } | null }[]) {
+  const [summary, setSummary] = useState<EmotionSummary | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    // Aggregate across all enrolled courses — use the first course that has data
+    // (you can later merge all courses; this covers the most common single-course case)
+    const courseIds = enrollments
+      .map((e) => e.course?._id)
+      .filter(Boolean) as string[];
+
+    if (courseIds.length === 0) return;
+
+    setLoading(true);
+
+    // Fetch summaries for all courses in parallel, then merge them
+    Promise.all(
+      courseIds.map((id) =>
+        axios
+          .get<EmotionSummary>(`${API}/student/courses/${id}/emotion-summary`)
+          .then((r) => r.data)
+          .catch(() => null)
+      )
+    ).then((results) => {
+      const valid = results.filter((r) => r && r.hasData) as EmotionSummary[];
+      if (valid.length === 0) {
+        setSummary({ hasData: false, distribution: [], weekSignals: { positive: 0, neutral: 0, struggling: 0, disengaged: 0 }, bestHour: null, totalDetections: 0 });
+        return;
+      }
+
+      // Merge all distributions by summing counts
+      const merged: Record<string, EmotionDistEntry> = {};
+      let totalDetections = 0;
+      const weekSignals: Record<LearningSignal, number> = { positive: 0, neutral: 0, struggling: 0, disengaged: 0 };
+      let bestHour: number | null = null;
+
+      for (const s of valid) {
+        totalDetections += s.totalDetections;
+        if (s.bestHour !== null) bestHour = s.bestHour; // take last non-null
+        (Object.keys(s.weekSignals) as LearningSignal[]).forEach(
+          (k) => { weekSignals[k] += s.weekSignals[k]; }
+        );
+        for (const entry of s.distribution) {
+          if (!merged[entry.emotion]) {
+            merged[entry.emotion] = { ...entry };
+          } else {
+            merged[entry.emotion].count += entry.count;
+          }
+        }
+      }
+
+      // Recalculate percentages after merge
+      const distribution = Object.values(merged)
+        .map((e) => ({ ...e, pct: Math.round((e.count / totalDetections) * 100) }))
+        .sort((a, b) => b.count - a.count);
+
+      setSummary({ hasData: true, distribution, weekSignals, bestHour, totalDetections });
+    }).finally(() => setLoading(false));
+  }, [enrollments]);
+
+  return { summary, loading };
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function formatHour(h: number): string {
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const display = h % 12 === 0 ? 12 : h % 12;
+  return `${display}:00 ${suffix}`;
+}
+
+const SIGNAL_COLORS: Record<LearningSignal, { bg: string; text: string; label: string }> = {
+  positive:   { bg: 'bg-green-100',  text: 'text-green-700',  label: 'Going well'       },
+  neutral:    { bg: 'bg-blue-100',   text: 'text-blue-700',   label: 'Following along'  },
+  struggling: { bg: 'bg-amber-100',  text: 'text-amber-700',  label: 'Challenging'      },
+  disengaged: { bg: 'bg-red-100',    text: 'text-red-700',    label: 'Low engagement'   },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function StudentProfile() {
   const { user } = useAuth();
@@ -20,9 +121,14 @@ export default function StudentProfile() {
   const [activeTab, setActiveTab] = useState<'courses' | 'activity'>('courses');
   const [showEditModal, setShowEditModal] = useState(false);
 
-  // Optimistic local updates
+  // Optimistic local updates after profile edit
   const [localName, setLocalName] = useState<string | null>(null);
   const [localEmail, setLocalEmail] = useState<string | null>(null);
+
+  // Emotion summary (real data from API)
+  const { summary: emotionSummary, loading: emotionLoading } = useEmotionSummary(
+    data?.enrollments ?? []
+  );
 
   if (loading) {
     return (
@@ -48,7 +154,7 @@ export default function StudentProfile() {
 
   const { student, enrollments, stats, recentComments } = data;
 
-  const displayName = localName ?? student.fullName;
+  const displayName  = localName  ?? student.fullName;
   const displayEmail = localEmail ?? student.email;
 
   const initials = displayName
@@ -59,19 +165,23 @@ export default function StudentProfile() {
     .slice(0, 2) || 'S';
 
   const joinedDate = new Date(student.createdAt).toLocaleDateString(undefined, {
-    month: 'long',
-    year: 'numeric',
+    month: 'long', year: 'numeric',
   });
 
-  const visibleEnrollments = showAllEnrollments ? enrollments : enrollments.slice(0, 4);
-  const completedEnrollments = enrollments.filter((e) => e.progress === 100);
+  const visibleEnrollments    = showAllEnrollments ? enrollments : enrollments.slice(0, 4);
+  const completedEnrollments  = enrollments.filter((e) => e.progress === 100);
   const inProgressEnrollments = enrollments.filter((e) => e.progress > 0 && e.progress < 100);
+
+  // ── Emotion badge checks (uses real summary data) ─────────────────────────
+  const happyPct      = emotionSummary?.distribution.find((e) => e.emotion === 'happy')?.pct ?? 0;
+  const posWeek       = emotionSummary?.weekSignals.positive ?? 0;
+  const struggleWeek  = emotionSummary?.weekSignals.struggling ?? 0;
+  const hasEmotionData = emotionSummary?.hasData ?? false;
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
 
-      {/* Edit Modal */}
       {showEditModal && (
         <EditProfileModal
           onClose={() => setShowEditModal(false)}
@@ -82,7 +192,7 @@ export default function StudentProfile() {
         />
       )}
 
-      {/* Hero */}
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <div className="bg-gradient-to-br from-teal-600 via-emerald-600 to-cyan-700 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <button
@@ -116,23 +226,21 @@ export default function StudentProfile() {
               </div>
             </div>
 
-            {/* Edit button */}
             <button
               onClick={() => setShowEditModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-white/15 hover:bg-white/25 border border-white/30 text-white rounded-xl text-sm font-medium transition-colors flex-shrink-0"
             >
-              <Pencil className="w-4 h-4" />
-              Edit Profile
+              <Pencil className="w-4 h-4" /> Edit Profile
             </button>
           </div>
 
           {/* Stats strip */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-8">
             {[
-              { icon: BookOpen, label: 'Enrolled', value: stats.totalEnrolled },
-              { icon: CheckCircle, label: 'Completed', value: stats.completed },
-              { icon: TrendingUp, label: 'Avg progress', value: `${stats.avgProgress}%` },
-              { icon: Clock, label: 'Hours learned', value: `${stats.totalLearningTime}h` },
+              { icon: BookOpen,     label: 'Enrolled',    value: stats.totalEnrolled     },
+              { icon: CheckCircle,  label: 'Completed',   value: stats.completed         },
+              { icon: TrendingUp,   label: 'Avg progress',value: `${stats.avgProgress}%` },
+              { icon: Clock,        label: 'Hours learned',value:`${stats.totalLearningTime}h`},
             ].map(({ icon: Icon, label, value }) => (
               <div key={label} className="bg-white/10 backdrop-blur rounded-xl p-4 border border-white/10">
                 <Icon className="w-5 h-5 text-teal-200 mb-2" />
@@ -144,11 +252,11 @@ export default function StudentProfile() {
         </div>
       </div>
 
-      {/* Main */}
+      {/* ── Main ─────────────────────────────────────────────────────────── */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-          {/* Sidebar */}
+          {/* ── Sidebar ──────────────────────────────────────────────────── */}
           <div className="space-y-6">
 
             {/* Contact */}
@@ -170,7 +278,7 @@ export default function StudentProfile() {
               </div>
             </div>
 
-            {/* Progress overview */}
+            {/* Learning progress */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
               <h2 className="font-bold text-gray-900 mb-4">Learning progress</h2>
               <div className="space-y-4">
@@ -186,7 +294,6 @@ export default function StudentProfile() {
                     />
                   </div>
                 </div>
-
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div className="p-3 bg-green-50 rounded-lg">
                     <p className="text-lg font-bold text-green-700">{stats.completed}</p>
@@ -204,36 +311,88 @@ export default function StudentProfile() {
               </div>
             </div>
 
-            {/* Emotion insights */}
+            {/* ── Emotion Insights (REAL DATA) ──────────────────────────── */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <h2 className="font-bold text-gray-900 mb-1 flex items-center gap-2">
                 <Brain className="w-4 h-4 text-purple-500" /> Emotion insights
               </h2>
-              <p className="text-xs text-gray-400 mb-4">Dominant emotions during learning sessions</p>
-              <div className="space-y-3">
-                {[
-                  { emotion: 'engaged' as const, label: 'Engaged', pct: 62, color: 'bg-green-500' },
-                  { emotion: 'excited' as const, label: 'Excited', pct: 21, color: 'bg-yellow-400' },
-                  { emotion: 'neutral' as const, label: 'Neutral', pct: 11, color: 'bg-blue-400' },
-                  { emotion: 'confused' as const, label: 'Confused', pct: 6, color: 'bg-orange-400' },
-                ].map(({ emotion, label, pct, color }) => (
-                  <div key={emotion} className="flex items-center gap-3">
-                    <EmotionIndicator emotion={emotion} size="sm" />
-                    <div className="flex-1">
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-gray-600">{label}</span>
-                        <span className="font-medium text-gray-900">{pct}%</span>
+              <p className="text-xs text-gray-400 mb-4">How you feel during learning sessions</p>
+
+              {emotionLoading ? (
+                <div className="flex items-center justify-center py-6">
+                  <Loader2 className="w-5 h-5 text-purple-400 animate-spin" />
+                </div>
+              ) : !hasEmotionData ? (
+                <div className="text-center py-6">
+                  <Brain className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+                  <p className="text-xs text-gray-400">
+                    Emotion data will appear here once you start a lesson with camera enabled.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Emotion distribution bars */}
+                  <div className="space-y-3 mb-5">
+                    {emotionSummary!.distribution.slice(0, 5).map((entry) => (
+                      <div key={entry.emotion} className="flex items-center gap-3">
+                        <EmotionIndicator emotion={entry.emotion} size="sm" />
+                        <div className="flex-1">
+                          <div className="flex justify-between text-xs mb-1">
+                            {/* Use student-safe displayLabel, never raw emotion name */}
+                            <span className="text-gray-600">{entry.displayLabel}</span>
+                            <span className="font-medium text-gray-900">{entry.pct}%</span>
+                          </div>
+                          <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all"
+                              style={{
+                                width: `${entry.pct}%`,
+                                backgroundColor: emotionHeatColor[entry.emotion],
+                              }}
+                            />
+                          </div>
+                        </div>
                       </div>
-                      <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className={`h-full ${color} rounded-full`} style={{ width: `${pct}%` }} />
-                      </div>
+                    ))}
+                  </div>
+
+                  {/* Weekly signal summary */}
+                  <div className="border-t border-gray-100 pt-4 mb-4">
+                    <p className="text-xs font-medium text-gray-500 mb-2">This week</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(Object.keys(SIGNAL_COLORS) as LearningSignal[]).map((signal) => {
+                        const count = emotionSummary!.weekSignals[signal];
+                        const s = SIGNAL_COLORS[signal];
+                        return (
+                          <div key={signal} className={`${s.bg} rounded-lg px-3 py-2 text-center`}>
+                            <p className={`text-sm font-bold ${s.text}`}>{count}</p>
+                            <p className={`text-xs ${s.text} opacity-80`}>{s.label}</p>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                ))}
-              </div>
+
+                  {/* Best learning time insight */}
+                  {emotionSummary!.bestHour !== null && (
+                    <div className="flex items-center gap-2 p-3 bg-yellow-50 border border-yellow-100 rounded-lg">
+                      <Sun className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+                      <p className="text-xs text-yellow-800">
+                        You're most focused around{' '}
+                        <span className="font-semibold">{formatHour(emotionSummary!.bestHour)}</span>
+                        {' '}— that's your peak learning time.
+                      </p>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-gray-300 mt-3 text-center">
+                    Based on {emotionSummary!.totalDetections.toLocaleString()} detections
+                  </p>
+                </>
+              )}
             </div>
 
-            {/* Activity stats */}
+            {/* Engagement stats */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
               <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
                 <BarChart2 className="w-4 h-4 text-blue-500" /> Engagement
@@ -279,7 +438,7 @@ export default function StudentProfile() {
             )}
           </div>
 
-          {/* Main column */}
+          {/* ── Main column ──────────────────────────────────────────────── */}
           <div className="lg:col-span-2 space-y-6">
 
             {/* Tabs */}
@@ -301,6 +460,7 @@ export default function StudentProfile() {
               </div>
 
               <div className="p-6">
+                {/* Courses tab */}
                 {activeTab === 'courses' && (
                   <>
                     {enrollments.length === 0 ? (
@@ -392,11 +552,10 @@ export default function StudentProfile() {
                             onClick={() => setShowAllEnrollments(!showAllEnrollments)}
                             className="w-full mt-4 flex items-center justify-center gap-1 text-sm text-teal-600 hover:text-teal-700 py-2 border border-teal-100 rounded-lg hover:bg-teal-50 transition-colors"
                           >
-                            {showAllEnrollments ? (
-                              <><ChevronUp className="w-4 h-4" /> Show less</>
-                            ) : (
-                              <><ChevronDown className="w-4 h-4" /> Show all {enrollments.length} courses</>
-                            )}
+                            {showAllEnrollments
+                              ? <><ChevronUp className="w-4 h-4" /> Show less</>
+                              : <><ChevronDown className="w-4 h-4" /> Show all {enrollments.length} courses</>
+                            }
                           </button>
                         )}
                       </>
@@ -404,6 +563,7 @@ export default function StudentProfile() {
                   </>
                 )}
 
+                {/* Activity tab */}
                 {activeTab === 'activity' && (
                   <div className="space-y-4">
                     {recentComments.length === 0 && inProgressEnrollments.length === 0 ? (
@@ -442,9 +602,7 @@ export default function StudentProfile() {
                               </p>
                               <p className="text-xs text-gray-400 mt-0.5">
                                 {new Date(comment.createdAt).toLocaleDateString(undefined, {
-                                  month: 'short',
-                                  day: 'numeric',
-                                  year: 'numeric',
+                                  month: 'short', day: 'numeric', year: 'numeric',
                                 })}
                               </p>
                             </div>
@@ -457,10 +615,12 @@ export default function StudentProfile() {
               </div>
             </div>
 
-            {/* Achievements */}
+            {/* ── Achievements (original + 4 new emotion badges) ───────── */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
               <h2 className="text-xl font-bold text-gray-900 mb-5">Achievements</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+                {/* ── Original achievements ─────────────────────────────── */}
                 {stats.completed >= 1 && (
                   <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-100 rounded-xl">
                     <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -516,7 +676,56 @@ export default function StudentProfile() {
                     </div>
                   </div>
                 )}
-                {stats.completed === 0 && stats.totalEnrolled < 3 && stats.totalRatingsGiven === 0 && stats.totalLearningTime < 10 && (
+
+                {/* ── New emotion-driven badges (only shown if earned) ───── */}
+                {hasEmotionData && happyPct >= 80 && (
+                  <div className="flex items-center gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
+                    <div className="w-10 h-10 bg-yellow-100 rounded-xl flex items-center justify-center flex-shrink-0 text-xl">
+                      😊
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-yellow-900">Joy Learner</p>
+                      <p className="text-xs text-yellow-700">80%+ happy during sessions</p>
+                    </div>
+                  </div>
+                )}
+                {hasEmotionData && struggleWeek > 0 && posWeek > 0 && (
+                  <div className="flex items-center gap-3 p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
+                    <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center flex-shrink-0 text-xl">
+                      💪
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-indigo-900">Resilient</p>
+                      <p className="text-xs text-indigo-700">Bounced back from a tough session</p>
+                    </div>
+                  </div>
+                )}
+                {hasEmotionData && stats.completed >= 1 && (
+                  <div className="flex items-center gap-3 p-3 bg-purple-50 border border-purple-100 rounded-xl">
+                    <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center flex-shrink-0 text-xl">
+                      🧠
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-purple-900">Fearless</p>
+                      <p className="text-xs text-purple-700">Completed a lesson despite difficulty</p>
+                    </div>
+                  </div>
+                )}
+                {hasEmotionData && posWeek >= 10 && (
+                  <div className="flex items-center gap-3 p-3 bg-rose-50 border border-rose-100 rounded-xl">
+                    <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center flex-shrink-0 text-xl">
+                      🔥
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-rose-900">Unstoppable</p>
+                      <p className="text-xs text-rose-700">10+ positive signals this week</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Empty state */}
+                {stats.completed === 0 && stats.totalEnrolled < 3 && stats.totalRatingsGiven === 0
+                  && stats.totalLearningTime < 10 && !hasEmotionData && (
                   <div className="col-span-2 text-center py-6 text-gray-400 text-sm">
                     Keep learning to unlock achievements!
                   </div>

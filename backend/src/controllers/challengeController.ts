@@ -6,14 +6,30 @@ import RoomStudent from "../models/RoomStudent";
 import ChallengeTimerStart from "../models/ChallengeTimerStart";
 import { ChallengeThread, RoomAnnouncement } from "../models/ChallengeThread";
 import PrivateRoom from "../models/PrivateRoom";
+import Enrollment from "../models/Enrollment";          // ← NEW: for emotion log
+import type { RawEmotion } from "../models/Enrollment"; // ← NEW: emotion types
 import {
   calculateLevel,
   calculateBonusPoints,
   calculateStreakMultiplier,
+  calculateEmotionXpMultiplier, // ← NEW
   getNewBadges,
   updateStreak,
   BADGE_DEFINITIONS,
 } from "../utils/gamificationEngine";
+
+// ── Emotion signal mapping (mirrors frontend emotionMapping.ts) ───────────────
+// Kept inline here so the backend doesn't depend on a frontend file.
+type LearningSignal = "positive" | "neutral" | "struggling" | "disengaged";
+
+const emotionToSignal: Record<RawEmotion, LearningSignal> = {
+  happy:   "positive",
+  neutral: "neutral",
+  sad:     "struggling",
+  fear:    "struggling",
+  angry:   "disengaged",
+  disgust: "disengaged",
+};
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -46,6 +62,98 @@ async function ensureRoomMembership(req: Request, res: Response): Promise<boolea
   return true;
 }
 
+// ── NEW: Build emotion stats from a student's emotionLog for a time window ────
+// Called just before awardPointsAndBadges to derive badge conditions and XP multiplier.
+async function buildEmotionStats(
+  studentId: string,
+  sinceTimestamp: number // challenge.startsAt.getTime()
+): Promise<{
+  happyRatio: number;
+  recoveredFromNegative: boolean;
+  completedWhileFearful: boolean;
+  angryToHappyRecoveries: number;
+  isStruggling: boolean; // used for free hints
+}> {
+  try {
+    // Fetch all enrollments for this student and collect emotion entries since challenge start
+    const enrollments = await Enrollment.find(
+      { studentId, "emotionLog.0": { $exists: true } },
+      { emotionLog: 1 }
+    );
+
+    const sessionEntries: RawEmotion[] = [];
+    for (const enrollment of enrollments) {
+      for (const entry of enrollment.emotionLog) {
+        if (entry.timestamp_ms >= sinceTimestamp) {
+          sessionEntries.push(entry.emotion);
+        }
+      }
+    }
+
+    if (sessionEntries.length === 0) {
+      return {
+        happyRatio: 0,
+        recoveredFromNegative: false,
+        completedWhileFearful: false,
+        angryToHappyRecoveries: 0,
+        isStruggling: false,
+      };
+    }
+
+    // ── happy ratio ─────────────────────────────────────────────────────────
+    const happyCount = sessionEntries.filter((e) => e === "happy").length;
+    const happyRatio = happyCount / sessionEntries.length;
+
+    // ── fear detected at any point ───────────────────────────────────────────
+    const completedWhileFearful = sessionEntries.includes("fear");
+
+    // ── struggling signal detected at any point ──────────────────────────────
+    const isStruggling = sessionEntries.some(
+      (e) => emotionToSignal[e] === "struggling" || emotionToSignal[e] === "disengaged"
+    );
+
+    // ── recovery: negative → positive transitions ────────────────────────────
+    // Walk the log looking for: any negative signal followed by positive signal
+    let recoveredFromNegative = false;
+    let angryToHappyRecoveries = 0;
+    let wasNegative = false;
+    let wasDisengaged = false;
+
+    for (const emotion of sessionEntries) {
+      const signal = emotionToSignal[emotion];
+      if (signal === "struggling" || signal === "disengaged") {
+        wasNegative = true;
+        if (signal === "disengaged") wasDisengaged = true;
+      } else if (signal === "positive" && wasNegative) {
+        recoveredFromNegative = true;
+        if (wasDisengaged) {
+          angryToHappyRecoveries += 1;
+          wasDisengaged = false;
+        }
+        wasNegative = false;
+      }
+    }
+
+    return {
+      happyRatio,
+      recoveredFromNegative,
+      completedWhileFearful,
+      angryToHappyRecoveries,
+      isStruggling,
+    };
+  } catch {
+    // Non-blocking — emotion stats are a bonus, not critical to submission flow
+    return {
+      happyRatio: 0,
+      recoveredFromNegative: false,
+      completedWhileFearful: false,
+      angryToHappyRecoveries: 0,
+      isStruggling: false,
+    };
+  }
+}
+
+// ── Updated awardPointsAndBadges — now accepts emotion stats ─────────────────
 async function awardPointsAndBadges(
   studentId: string,
   roomId: string,
@@ -56,6 +164,11 @@ async function awardPointsAndBadges(
     isFirstBlood?: boolean;
     isTop3?: boolean;
     isSpeedRunner?: boolean;
+    // ── NEW emotion fields ──────────────────────────────────────────────────
+    happyRatio?: number;
+    recoveredFromNegative?: boolean;
+    completedWhileFearful?: boolean;
+    angryToHappyRecoveries?: number;
   } = {}
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<{ newBadges: any[]; newLevel: number; newPoints: number }> {
@@ -75,12 +188,15 @@ async function awardPointsAndBadges(
     newStreakCurrent = 1;
   }
 
-  const streakMultiplier = calculateStreakMultiplier(newStreakCurrent);
-  const finalPoints = Math.round(pointsToAdd * (1 + streakMultiplier));
+  // ── XP calculation: streak multiplier + NEW emotion multiplier ───────────
+  const streakMultiplier  = calculateStreakMultiplier(newStreakCurrent);
+  const emotionMultiplier = calculateEmotionXpMultiplier(opts.happyRatio ?? 0); // ← NEW
+  const finalPoints = Math.round(pointsToAdd * (1 + streakMultiplier + emotionMultiplier));
+
   const newPoints = rs.totalPoints + finalPoints;
   const newLevel  = calculateLevel(newPoints);
 
-  // Check for new badges
+  // ── Badge checks — original + NEW emotion badges ─────────────────────────
   const badgeStats = {
     challengesCompleted: rs.challengesCompleted + 1,
     streak:              newStreakCurrent,
@@ -91,6 +207,11 @@ async function awardPointsAndBadges(
     helpfulPosts:        rs.helpfulPosts,
     level:               newLevel,
     challengesAttempted: rs.challengesAttempted,
+    // ── NEW ─────────────────────────────────────────────────────────────────
+    happyRatio:              opts.happyRatio ?? 0,
+    recoveredFromNegative:   opts.recoveredFromNegative ?? false,
+    completedWhileFearful:   opts.completedWhileFearful ?? false,
+    angryToHappyRecoveries:  opts.angryToHappyRecoveries ?? 0,
   };
 
   const currentBadgeIds = rs.badges.map((b) => b.id);
@@ -104,8 +225,8 @@ async function awardPointsAndBadges(
       level:               newLevel,
       challengesCompleted: rs.challengesCompleted + 1,
       challengesAttempted: rs.challengesAttempted + 1,
-      "streak.current":   newStreakCurrent,
-      "streak.longest":   newStreakLongest,
+      "streak.current":    newStreakCurrent,
+      "streak.longest":    newStreakLongest,
       "streak.lastActiveDate": new Date(),
       lastActiveAt:        new Date(),
       $push: newBadgeObjects.length ? { badges: { $each: newBadgeObjects } } : undefined,
@@ -127,11 +248,8 @@ export const getChallenges = async (req: Request, res: Response) => {
     const filter: Record<string, unknown> = { roomId };
     if (status) filter.status = status;
 
-    // Students cannot see drafts
     if ((req as any).user.role === "student") {
-      filter.status = filter.status
-        ? { $in: ["upcoming","active","completed"] }
-        : { $in: ["upcoming","active","completed"] };
+      filter.status = { $in: ["upcoming","active","completed"] };
     }
 
     const challenges = await Challenge.find(filter).sort({ startsAt: 1 });
@@ -151,7 +269,6 @@ export const getChallenge = async (req: Request, res: Response) => {
     const challenge = await Challenge.findOne({ _id: challengeId, roomId });
     if (!challenge) return res.status(404).json({ message: "Challenge not found." });
 
-    // Strip correct answers from quiz for students
     if ((req as any).user.role === "student" && challenge.status === "active") {
       const safe = challenge.toObject();
       safe.questions = safe.questions?.map((q) => ({
@@ -351,22 +468,21 @@ export const submitChallenge = async (req: Request, res: Response) => {
       new Date()
     );
 
-    // ── Is first blood? ───────────────────────────────────────────
-    const existingCount = await Submission.countDocuments({ challengeId, roomId });
-    const isFirstBlood = existingCount === 0;
-
-    // ── Speed runner? (top 10% time) ──────────────────────────────
-    const totalWindow = challenge.endsAt.getTime() - challenge.startsAt.getTime();
-    const elapsed     = Date.now() - challenge.startsAt.getTime();
-    const isSpeedRunner = elapsed / totalWindow < 0.1;
-
-    // ── Perfect score? ────────────────────────────────────────────
+    // ── Gamification flags ────────────────────────────────────────
+    const existingCount  = await Submission.countDocuments({ challengeId, roomId });
+    const isFirstBlood   = existingCount === 0;
+    const totalWindow    = challenge.endsAt.getTime() - challenge.startsAt.getTime();
+    const elapsed        = Date.now() - challenge.startsAt.getTime();
+    const isSpeedRunner  = elapsed / totalWindow < 0.1;
     const hasPerfectScore =
       challenge.type === "quiz" &&
       challenge.totalPoints > 0 &&
       score >= challenge.totalPoints;
 
     const totalScore = score + bonusScore;
+
+    // ── NEW: build emotion stats for this challenge session ───────
+    const emotionStats = await buildEmotionStats(studentId, challenge.startsAt.getTime());
 
     const submission = await Submission.create({
       challengeId, roomId, studentId,
@@ -384,18 +500,26 @@ export const submitChallenge = async (req: Request, res: Response) => {
       gradedAt: submissionStatus === "auto_graded" ? new Date() : undefined,
     });
 
-    // Update participant count (only on first attempt)
     if (attemptNumber === 1) {
       await Challenge.findByIdAndUpdate(challengeId, { $inc: { participantCount: 1 } });
     }
 
-    // ── Award gamification ────────────────────────────────────────
+    // ── Award gamification with emotion context ────────────────────
     const { newBadges, newLevel, newPoints } = await awardPointsAndBadges(
       studentId, roomId, totalScore, challengeId,
-      { hasPerfectScore, isFirstBlood, isSpeedRunner, isTop3: false }
+      {
+        hasPerfectScore,
+        isFirstBlood,
+        isSpeedRunner,
+        isTop3: false,
+        // ── NEW emotion stats ──────────────────────────────────────
+        happyRatio:             emotionStats.happyRatio,
+        recoveredFromNegative:  emotionStats.recoveredFromNegative,
+        completedWhileFearful:  emotionStats.completedWhileFearful,
+        angryToHappyRecoveries: emotionStats.angryToHappyRecoveries,
+      }
     );
 
-    // ── Ensure RoomStudent exists (upsert for safety) ─────────────
     await RoomStudent.updateOne(
       { studentId, roomId },
       { $setOnInsert: { challengesAttempted: 0, joinedAt: new Date() } },
@@ -404,7 +528,13 @@ export const submitChallenge = async (req: Request, res: Response) => {
 
     res.status(201).json({
       submission,
-      gamification: { newBadges, newLevel, newPoints },
+      gamification: {
+        newBadges,
+        newLevel,
+        newPoints,
+        // ── NEW: tell the frontend whether XP was boosted by emotion ─
+        emotionXpBoost: emotionStats.happyRatio >= 0.5,
+      },
     });
   } catch (err) {
     console.error(err);
@@ -455,26 +585,34 @@ export const gradeSubmission = async (req: Request, res: Response) => {
     const submission = await Submission.findById(submissionId);
     if (!submission) return res.status(404).json({ message: "Submission not found." });
 
-    const challenge = await Challenge.findById(submission.challengeId);
-    const bonusScore = submission.bonusScore;
-    const totalScore = (score ?? 0) + bonusScore;
+    const challenge   = await Challenge.findById(submission.challengeId);
+    const bonusScore  = submission.bonusScore;
+    const totalScore  = (score ?? 0) + bonusScore;
 
-    submission.score     = score ?? 0;
+    submission.score      = score ?? 0;
     submission.totalScore = totalScore;
-    submission.feedback  = feedback;
-    submission.status    = "graded";
-    submission.gradedAt  = new Date();
-    submission.gradedBy  = new mongoose.Types.ObjectId(gradedBy);
+    submission.feedback   = feedback;
+    submission.status     = "graded";
+    submission.gradedAt   = new Date();
+    submission.gradedBy   = new mongoose.Types.ObjectId(gradedBy);
     await submission.save();
 
-    // Award points for newly graded submission
+    // ── NEW: pull emotion stats for the graded student too ─────────
+    const emotionStats = challenge
+      ? await buildEmotionStats(String(submission.studentId), challenge.startsAt.getTime())
+      : { happyRatio: 0, recoveredFromNegative: false, completedWhileFearful: false, angryToHappyRecoveries: 0, isStruggling: false };
+
     await awardPointsAndBadges(
       String(submission.studentId),
       String(submission.roomId),
       totalScore,
       String(submission.challengeId),
       {
-        hasPerfectScore: challenge ? totalScore >= challenge.totalPoints : false,
+        hasPerfectScore:        challenge ? totalScore >= challenge.totalPoints : false,
+        happyRatio:             emotionStats.happyRatio,
+        recoveredFromNegative:  emotionStats.recoveredFromNegative,
+        completedWhileFearful:  emotionStats.completedWhileFearful,
+        angryToHappyRecoveries: emotionStats.angryToHappyRecoveries,
       }
     );
 
@@ -524,12 +662,10 @@ export const getChallengeLeaderboard = async (req: Request, res: Response) => {
 
     const isTeacher = (req as any).user.role === "teacher";
 
-    // Hide until ended if configured
     if (challenge.hideLeaderboard && new Date() < challenge.endsAt && !isTeacher) {
       return res.json({ hidden: true, message: "Leaderboard will be revealed after the challenge ends." });
     }
 
-    // Best submission per student
     const raw = await Submission.aggregate([
       {
         $match: {
@@ -538,12 +674,7 @@ export const getChallengeLeaderboard = async (req: Request, res: Response) => {
         },
       },
       { $sort: { totalScore: -1, submittedAt: 1 } },
-      {
-        $group: {
-          _id:  "$studentId",
-          best: { $first: "$$ROOT" },
-        },
-      },
+      { $group: { _id: "$studentId", best: { $first: "$$ROOT" } } },
       { $sort: { "best.totalScore": -1, "best.submittedAt": 1 } },
     ]);
 
@@ -575,11 +706,8 @@ export const getMyRoomStats = async (req: Request, res: Response) => {
     const studentId = (req as any).user.id;
 
     let rs = await RoomStudent.findOne({ studentId, roomId });
-    if (!rs) {
-      rs = await RoomStudent.create({ studentId, roomId });
-    }
+    if (!rs) rs = await RoomStudent.create({ studentId, roomId });
 
-    // Compute rank
     const rank = (await RoomStudent.countDocuments({
       roomId,
       totalPoints: { $gt: rs.totalPoints },
@@ -603,15 +731,19 @@ export const getHints = async (req: Request, res: Response) => {
     const challenge = await Challenge.findOne({ _id: challengeId, roomId });
     if (!challenge) return res.status(404).json({ message: "Challenge not found." });
 
-    // Return hints with "revealed" flag based on student's used hints
     const submission = await Submission.findOne({ challengeId, studentId }).sort({ attemptNumber: -1 });
     const usedIndices = submission?.hintsUsedIndices ?? [];
 
+    // ── NEW: check if student is currently struggling → hints show as free ──
+    const emotionStats = await buildEmotionStats(studentId, challenge.startsAt.getTime());
+
     const hints = challenge.hints.map((h, i) => ({
-      index:       i,
-      pointsCost:  h.pointsCost,
-      revealed:    usedIndices.includes(i),
-      text:        usedIndices.includes(i) ? h.text : undefined,
+      index:      i,
+      // Show 0 cost when student is struggling (override original cost in display only)
+      pointsCost: emotionStats.isStruggling ? 0 : h.pointsCost,
+      revealed:   usedIndices.includes(i),
+      text:       usedIndices.includes(i) ? h.text : undefined,
+      isFree:     emotionStats.isStruggling, // ← flag for the frontend to show "Free!" badge
     }));
 
     res.json(hints);
@@ -634,29 +766,41 @@ export const useHint = async (req: Request, res: Response) => {
     const hint = challenge.hints[idx];
     if (!hint) return res.status(404).json({ message: "Hint not found." });
 
-    // Check if already used
-    const existingSub = await Submission.findOne({ challengeId, studentId }).sort({ attemptNumber: -1 });
-    const usedIndices = existingSub?.hintsUsedIndices ?? [];
+    const existingSub   = await Submission.findOne({ challengeId, studentId }).sort({ attemptNumber: -1 });
+    const usedIndices   = existingSub?.hintsUsedIndices ?? [];
     if (usedIndices.includes(idx)) {
       return res.json({ hint: hint.text, pointsDeducted: 0, alreadyUsed: true });
     }
 
-    // Deduct points
-    if (hint.pointsCost > 0) {
+    // ── NEW: no point deduction when student is struggling ────────
+    const emotionStats  = await buildEmotionStats(studentId, challenge.startsAt.getTime());
+    const effectiveCost = emotionStats.isStruggling ? 0 : hint.pointsCost;
+
+    if (effectiveCost > 0) {
       await RoomStudent.findOneAndUpdate(
         { studentId, roomId },
-        { $inc: { totalPoints: -hint.pointsCost, hintsRequested: 1 } }
+        { $inc: { totalPoints: -effectiveCost, hintsRequested: 1 } }
+      );
+    } else {
+      // Still track hints requested even when free
+      await RoomStudent.findOneAndUpdate(
+        { studentId, roomId },
+        { $inc: { hintsRequested: 1 } }
       );
     }
 
-    // Mark hint as used on latest submission (or create a placeholder)
     if (existingSub) {
       await Submission.findByIdAndUpdate(existingSub._id, {
         $addToSet: { hintsUsedIndices: idx },
       });
     }
 
-    res.json({ hint: hint.text, pointsDeducted: hint.pointsCost, alreadyUsed: false });
+    res.json({
+      hint:           hint.text,
+      pointsDeducted: effectiveCost,
+      alreadyUsed:    false,
+      wasFree:        emotionStats.isStruggling, // ← frontend can show "Hint was free 💙"
+    });
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
@@ -691,8 +835,7 @@ export const postThread = async (req: Request, res: Response) => {
     if (!text?.trim()) return res.status(400).json({ message: "Text is required." });
 
     const thread = await ChallengeThread.create({
-      challengeId,
-      roomId,
+      challengeId, roomId,
       authorId:   user.id,
       authorName: user.fullName || "User",
       authorRole: user.role,
@@ -701,7 +844,6 @@ export const postThread = async (req: Request, res: Response) => {
       isHint:     user.role === "teacher" && req.body.isHint === true,
     });
 
-    // Award helpful-post tracking for teachers marking a reply as helpful (future extension)
     res.status(201).json(thread);
   } catch (err) {
     res.status(500).json({ message: "Server error" });
@@ -721,7 +863,6 @@ export const reactToThread = async (req: Request, res: Response) => {
     const thread = await ChallengeThread.findById(threadId);
     if (!thread) return res.status(404).json({ message: "Thread not found." });
 
-    // Toggle reaction
     const existing = thread.reactions.findIndex(
       (r) => r.userId === userId && r.emoji === emoji
     );
@@ -837,15 +978,15 @@ export const getRoomAnalytics = async (req: Request, res: Response) => {
 
     const challengeAnalytics = await Promise.all(
       challenges.map(async (c) => {
-        const submissions = await Submission.find({ challengeId: c._id });
+        const submissions   = await Submission.find({ challengeId: c._id });
         const uniqueStudents = new Set(submissions.map((s) => String(s.studentId))).size;
         const avgScore = submissions.length
           ? Math.round(submissions.reduce((s, sub) => s + sub.totalScore, 0) / submissions.length)
           : 0;
         return {
-          _id:              c._id,
-          title:            c.title,
-          difficulty:       c.difficulty,
+          _id:               c._id,
+          title:             c.title,
+          difficulty:        c.difficulty,
           participationRate: totalStudents
             ? Math.round((uniqueStudents / totalStudents) * 100)
             : 0,
@@ -855,7 +996,7 @@ export const getRoomAnalytics = async (req: Request, res: Response) => {
       })
     );
 
-    const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const oneWeekAgo    = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const inactiveCount = await RoomStudent.countDocuments({
       roomId,
       lastActiveAt: { $lt: oneWeekAgo },
@@ -868,8 +1009,8 @@ export const getRoomAnalytics = async (req: Request, res: Response) => {
 
     res.json({
       totalStudents,
-      totalChallenges:   challenges.length,
-      inactiveStudents:  inactiveCount,
+      totalChallenges:  challenges.length,
+      inactiveStudents: inactiveCount,
       challengeAnalytics,
       topStudents: topStudents.map((s) => ({
         student:     s.studentId,
@@ -899,7 +1040,6 @@ export const awardManualPoints = async (req: Request, res: Response) => {
       { new: true, upsert: true }
     );
 
-    // Re-calc level
     const newLevel = calculateLevel(rs.totalPoints);
     await RoomStudent.findOneAndUpdate({ studentId, roomId }, { level: newLevel });
 

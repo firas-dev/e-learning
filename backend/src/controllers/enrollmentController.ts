@@ -4,6 +4,7 @@ import Course from "../models/Course";
 import Rating from "../models/Rating";
 import Notification from "../models/Notification";
 import User from "../models/User";
+import Lesson from "../models/Lesson";
 
 // helper: compute average rating for a course from all lesson ratings
 async function getCourseAverageRating(courseId: string): Promise<number> {
@@ -131,6 +132,31 @@ export const getMyEnrollments = async (req: Request, res: Response) => {
     const studentId = (req as any).user.id;
     const enrollments = await Enrollment.find({ studentId }).select("courseId");
     res.json(enrollments.map((e) => String(e.courseId)));
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const getCourseDetails = async (req: Request, res: Response) => {
+  try {
+    const { courseId } = req.params;
+    const course = await Course.findOne({ _id: courseId, is_published: true })
+      .populate("teacherId", "fullName email");
+    if (!course) {
+      return res.status(404).json({ message: "Course not found or not available." });
+    }
+    const [lessons, enrollmentCount, averageRating] = await Promise.all([
+      Lesson.find({ courseId }).select("title order").sort({ order: 1 }),
+      Enrollment.countDocuments({ courseId }),
+      getCourseAverageRating(courseId),
+    ]);
+    res.json({
+      ...course.toObject(),
+      lessons: lessons.map((l) => ({ _id: l._id, title: l.title })),
+      lessonCount: lessons.length,
+      enrollmentCount,
+      averageRating,
+    });
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
