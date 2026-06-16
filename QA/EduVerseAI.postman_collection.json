@@ -1,0 +1,558 @@
+{
+    "info": {
+      "name": "EduVerse AI - API Tests",
+      "_postman_id": "eduverse-ai-api-tests-0001",
+      "description": "Automated functional API tests for the EduVerse AI platform. Covers authentication, teacher course management, and student enrollment, including positive (200/201) and negative (400/401/403/404) cases.
+       Token is captured at login and reused on protected routes.",
+      "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "event": [
+      {
+        "listen": "prerequest",
+        "script": {
+          "type": "text/javascript",
+          "exec": [
+            "// Generate unique accounts once per run so the collection is repeatable",
+            "if (!pm.collectionVariables.get('teacherEmail')) {",
+            "  pm.collectionVariables.set('teacherEmail', 'qa_teacher_' + Date.now() + '@eduverse.test');",
+            "}",
+            "if (!pm.collectionVariables.get('studentEmail')) {",
+            "  pm.collectionVariables.set('studentEmail', 'qa_student_' + Date.now() + '@eduverse.test');",
+            "}"
+          ]
+        }
+      },
+      {
+        "listen": "test",
+        "script": {
+          "type": "text/javascript",
+          "exec": [
+            "// Global performance assertion applied to every request",
+            "pm.test('[PERF] Response time is under 2000ms', function () {",
+            "  pm.expect(pm.response.responseTime).to.be.below(2000);",
+            "});"
+          ]
+        }
+      }
+    ],
+    "variable": [
+      { "key": "teacherEmail", "value": "" },
+      { "key": "studentEmail", "value": "" },
+      { "key": "teacherToken", "value": "" },
+      { "key": "studentToken", "value": "" },
+      { "key": "teacherId", "value": "" },
+      { "key": "studentId", "value": "" },
+      { "key": "courseId", "value": "" }
+    ],
+    "item": [
+      {
+        "name": "1 - Auth",
+        "item": [
+          {
+            "name": "Register Teacher",
+            "request": {
+              "method": "POST",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"email\": \"{{teacherEmail}}\",\n  \"password\": \"{{password}}\",\n  \"fullName\": \"QA Teacher\",\n  \"role\": \"teacher\"\n}"
+              }
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('[HTTP] Status is 201 Created', function () {",
+                    "  pm.response.to.have.status(201);",
+                    "});",
+                    "const body = pm.response.json();",
+                    "pm.test('[BODY] Response contains a JWT token', function () {",
+                    "  pm.expect(body).to.have.property('token').that.is.a('string');",
+                    "});",
+                    "pm.test('[BODY] Response contains the created user with an _id', function () {",
+                    "  pm.expect(body).to.have.property('user');",
+                    "  pm.expect(body.user).to.have.property('_id');",
+                    "  pm.expect(body.user.role).to.eql('teacher');",
+                    "});",
+                    "if (body.token) { pm.collectionVariables.set('teacherToken', body.token); }",
+                    "if (body.user && body.user._id) { pm.collectionVariables.set('teacherId', body.user._id); }"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Login Teacher",
+            "request": {
+              "method": "POST",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"email\": \"{{teacherEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+              }
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('[HTTP] Status is 200 OK', function () {",
+                    "  pm.response.to.have.status(200);",
+                    "});",
+                    "const body = pm.response.json();",
+                    "pm.test('[BODY] Login returns a token and user role', function () {",
+                    "  pm.expect(body).to.have.property('token').that.is.a('string');",
+                    "  pm.expect(body.user.role).to.eql('teacher');",
+                    "});",
+                    "if (body.token) { pm.collectionVariables.set('teacherToken', body.token); }"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Register Student",
+            "request": {
+              "method": "POST",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"email\": \"{{studentEmail}}\",\n  \"password\": \"{{password}}\",\n  \"fullName\": \"QA Student\",\n  \"role\": \"student\"\n}"
+              }
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('[HTTP] Status is 201 Created', function () {",
+                    "  pm.response.to.have.status(201);",
+                    "});",
+                    "const body = pm.response.json();",
+                    "pm.test('[BODY] Student account created with token', function () {",
+                    "  pm.expect(body).to.have.property('token').that.is.a('string');",
+                    "  pm.expect(body.user.role).to.eql('student');",
+                    "});",
+                    "if (body.token) { pm.collectionVariables.set('studentToken', body.token); }",
+                    "if (body.user && body.user._id) { pm.collectionVariables.set('studentId', body.user._id); }"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Login - wrong password (negative)",
+            "request": {
+              "method": "POST",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"email\": \"{{teacherEmail}}\",\n  \"password\": \"definitely-wrong-password\"\n}"
+              }
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('[HTTP] Wrong credentials are rejected with 400', function () {",
+                    "  pm.response.to.have.status(400);",
+                    "});",
+                    "pm.test('[BODY] Error message is \"Invalid credentials\"', function () {",
+                    "  pm.expect(pm.response.json().message).to.eql('Invalid credentials');",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Protected route without token (negative)",
+            "request": {
+              "method": "GET",
+              "header": [],
+              "url": { "raw": "{{baseUrl}}/teacher/dashboard", "host": ["{{baseUrl}}"], "path": ["teacher", "dashboard"] }
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('[HTTP] Missing token is rejected with 401', function () {",
+                    "  pm.response.to.have.status(401);",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "2 - Courses (Teacher)",
+        "item": [
+          {
+            "name": "Create Course",
+            "request": {
+              "method": "POST",
+              "header": [
+                { "key": "Content-Type", "value": "application/json" },
+                { "key": "Authorization", "value": "Bearer {{teacherToken}}" }
+              ],
+              "url": { "raw": "{{baseUrl}}/teacher/courses", "host": ["{{baseUrl}}"], "path": ["teacher", "courses"] },
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"title\": \"QA Automated Test Course\",\n  \"description\": \"Course created by the automated Postman test suite\",\n  \"course_type\": \"recorded\"\n}"
+              }
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('[HTTP] Status is 201 Created', function () {",
+                    "  pm.response.to.have.status(201);",
+                    "});",
+                    "const body = pm.response.json();",
+                    "pm.test('[BODY] New course has an _id', function () {",
+                    "  pm.expect(body).to.have.property('_id');",
+                    "});",
+                    "pm.test('[BODY] type is recorded and course starts unpublished', function () {",
+                    "  pm.expect(body.type).to.eql('recorded');",
+                    "  pm.expect(body.is_published).to.eql(false);",
+                    "});",
+                    "if (body._id) { pm.collectionVariables.set('courseId', body._id); }"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Create Course - missing title (negative)",
+            "request": {
+              "method": "POST",
+              "header": [
+                { "key": "Content-Type", "value": "application/json" },
+                { "key": "Authorization", "value": "Bearer {{teacherToken}}" }
+              ],
+              "url": { "raw": "{{baseUrl}}/teacher/courses", "host": ["{{baseUrl}}"], "path": ["teacher", "courses"] },
+              "body": {
+                "mode": "raw",
+                "raw": "{\n  \"course_type\": \"recorded\"\n}"
+              }
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('[HTTP] Missing title is rejected with 400', function () {",
+                    "  pm.response.to.have.status(400);",
+                    "});",
+                    "pm.test('[BODY] Error explains required fields', function () {",
+                    "  pm.expect(pm.response.json().message).to.eql('Title and type are required.');",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Get Teacher Dashboard (list)",
+            "request": {
+              "method": "GET",
+              "header": [{ "key": "Authorization", "value": "Bearer {{teacherToken}}" }],
+              "url": { "raw": "{{baseUrl}}/teacher/dashboard", "host": ["{{baseUrl}}"], "path": ["teacher", "dashboard"] }
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('[HTTP] Status is 200 OK', function () {",
+                    "  pm.response.to.have.status(200);",
+                    "});",
+                    "const body = pm.response.json();",
+                    "pm.test('[BODY] Dashboard returns a courses array and totals', function () {",
+                    "  pm.expect(body.courses).to.be.an('array');",
+                    "  pm.expect(body).to.have.property('total');",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Publish Course",
+            "request": {
+              "method": "PATCH",
+              "header": [{ "key": "Authorization", "value": "Bearer {{teacherToken}}" }],
+              "url": { "raw": "{{baseUrl}}/teacher/courses/{{courseId}}/publish", "host": ["{{baseUrl}}"], "path": ["teacher", "courses", "{{courseId}}", "publish"] }
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('[HTTP] Status is 200 OK', function () {",
+                    "  pm.response.to.have.status(200);",
+                    "});",
+                    "pm.test('[BODY] Course is now published', function () {",
+                    "  pm.expect(pm.response.json().is_published).to.eql(true);",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "3 - Enrollments (Student)",
+        "item": [
+          {
+            "name": "Get Catalog",
+            "request": {
+              "method": "GET",
+              "header": [{ "key": "Authorization", "value": "Bearer {{studentToken}}" }],
+              "url": { "raw": "{{baseUrl}}/enrollments/catalog", "host": ["{{baseUrl}}"], "path": ["enrollments", "catalog"] }
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('[HTTP] Status is 200 OK', function () {",
+                    "  pm.response.to.have.status(200);",
+                    "});",
+                    "pm.test('[BODY] Catalog returns a paginated courses array', function () {",
+                    "  pm.expect(pm.response.json().courses).to.be.an('array');",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Enroll in Course",
+            "request": {
+              "method": "POST",
+              "header": [{ "key": "Authorization", "value": "Bearer {{studentToken}}" }],
+              "url": { "raw": "{{baseUrl}}/enrollments/{{courseId}}/enroll", "host": ["{{baseUrl}}"], "path": ["enrollments", "{{courseId}}", "enroll"] }
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('[HTTP] Status is 201 Created', function () {",
+                    "  pm.response.to.have.status(201);",
+                    "});",
+                    "pm.test('[BODY] Enrollment starts at 0 progress', function () {",
+                    "  const body = pm.response.json();",
+                    "  pm.expect(body).to.have.property('_id');",
+                    "  pm.expect(body.progress).to.eql(0);",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Enroll again - already enrolled (negative)",
+            "request": {
+              "method": "POST",
+              "header": [{ "key": "Authorization", "value": "Bearer {{studentToken}}" }],
+              "url": { "raw": "{{baseUrl}}/enrollments/{{courseId}}/enroll", "host": ["{{baseUrl}}"], "path": ["enrollments", "{{courseId}}", "enroll"] }
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('[HTTP] Duplicate enrollment is rejected with 400', function () {",
+                    "  pm.response.to.have.status(400);",
+                    "});",
+                    "pm.test('[BODY] Error message reports already enrolled', function () {",
+                    "  pm.expect(pm.response.json().message).to.eql('Already enrolled in this course.');",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Get Course Details",
+            "request": {
+              "method": "GET",
+              "header": [{ "key": "Authorization", "value": "Bearer {{studentToken}}" }],
+              "url": { "raw": "{{baseUrl}}/enrollments/{{courseId}}/details", "host": ["{{baseUrl}}"], "path": ["enrollments", "{{courseId}}", "details"] }
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('[HTTP] Status is 200 OK', function () {",
+                    "  pm.response.to.have.status(200);",
+                    "});",
+                    "const body = pm.response.json();",
+                    "pm.test('[BODY] Details return the requested course with a lessons array', function () {",
+                    "  pm.expect(String(body._id)).to.eql(pm.collectionVariables.get('courseId'));",
+                    "  pm.expect(body.lessons).to.be.an('array');",
+                    "  pm.expect(body).to.have.property('lessonCount');",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Get My Enrollments",
+            "request": {
+              "method": "GET",
+              "header": [{ "key": "Authorization", "value": "Bearer {{studentToken}}" }],
+              "url": { "raw": "{{baseUrl}}/enrollments/my", "host": ["{{baseUrl}}"], "path": ["enrollments", "my"] }
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('[HTTP] Status is 200 OK', function () {",
+                    "  pm.response.to.have.status(200);",
+                    "});",
+                    "pm.test('[BODY] My enrollments include the enrolled course', function () {",
+                    "  const ids = pm.response.json();",
+                    "  pm.expect(ids).to.be.an('array');",
+                    "  pm.expect(ids).to.include(pm.collectionVariables.get('courseId'));",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Unenroll",
+            "request": {
+              "method": "DELETE",
+              "header": [{ "key": "Authorization", "value": "Bearer {{studentToken}}" }],
+              "url": { "raw": "{{baseUrl}}/enrollments/{{courseId}}/unenroll", "host": ["{{baseUrl}}"], "path": ["enrollments", "{{courseId}}", "unenroll"] }
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('[HTTP] Status is 200 OK', function () {",
+                    "  pm.response.to.have.status(200);",
+                    "});",
+                    "pm.test('[BODY] Unenroll confirmation message', function () {",
+                    "  pm.expect(pm.response.json().message).to.include('Unenrolled');",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Enroll in non-existent course (negative)",
+            "request": {
+              "method": "POST",
+              "header": [{ "key": "Authorization", "value": "Bearer {{studentToken}}" }],
+              "url": { "raw": "{{baseUrl}}/enrollments/000000000000000000000000/enroll", "host": ["{{baseUrl}}"], "path": ["enrollments", "000000000000000000000000", "enroll"] }
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('[HTTP] Non-existent course returns 404', function () {",
+                    "  pm.response.to.have.status(404);",
+                    "});",
+                    "pm.test('[BODY] Error message reports course not available', function () {",
+                    "  pm.expect(pm.response.json().message).to.eql('Course not found or not available.');",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "4 - Cleanup",
+        "item": [
+          {
+            "name": "Delete Course",
+            "request": {
+              "method": "DELETE",
+              "header": [{ "key": "Authorization", "value": "Bearer {{teacherToken}}" }],
+              "url": { "raw": "{{baseUrl}}/teacher/courses/{{courseId}}", "host": ["{{baseUrl}}"], "path": ["teacher", "courses", "{{courseId}}"] }
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('[HTTP] Status is 200 OK', function () {",
+                    "  pm.response.to.have.status(200);",
+                    "});",
+                    "pm.test('[BODY] Deletion confirmation message', function () {",
+                    "  pm.expect(pm.response.json().message).to.include('deleted');",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "Delete non-existent course (negative)",
+            "request": {
+              "method": "DELETE",
+              "header": [{ "key": "Authorization", "value": "Bearer {{teacherToken}}" }],
+              "url": { "raw": "{{baseUrl}}/teacher/courses/000000000000000000000000", "host": ["{{baseUrl}}"], "path": ["teacher", "courses", "000000000000000000000000"] }
+            },
+            "event": [
+              {
+                "listen": "test",
+                "script": {
+                  "type": "text/javascript",
+                  "exec": [
+                    "pm.test('[HTTP] Deleting a course you do not own returns 403', function () {",
+                    "  pm.response.to.have.status(403);",
+                    "});",
+                    "pm.test('[BODY] Error message reports unauthorized / not found', function () {",
+                    "  pm.expect(pm.response.json().message).to.eql('Course not found or unauthorized.');",
+                    "});"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }

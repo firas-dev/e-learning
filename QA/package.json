@@ -1,0 +1,5 @@
+{
+    "scripts": {
+      "test:api": "newman run EduVerseAI.postman_collection.json -e EduVerseAI.postman_environment.json -r cli,htmlextra --reporter-htmlextra-export newman-report/report.html"
+    }
+  }
