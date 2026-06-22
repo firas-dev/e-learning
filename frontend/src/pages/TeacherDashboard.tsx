@@ -195,18 +195,7 @@ export default function TeacherDashboard({ onOpenCourse }: TeacherDashboardProps
                   <option value="live">Live</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Duration (hours)</label>
-                <input
-                  type="number"
-                  name="duration_hours"
-                  value={form.duration_hours}
-                  onChange={handleChange}
-                  min={1}
-                  required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+              
               {form.course_type === 'live' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
