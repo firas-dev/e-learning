@@ -6,6 +6,7 @@ import RoomStudent from "../models/RoomStudent";
 import ChallengeTimerStart from "../models/ChallengeTimerStart";
 import { ChallengeThread, RoomAnnouncement } from "../models/ChallengeThread";
 import PrivateRoom from "../models/PrivateRoom";
+import Notification from "../models/Notification";
 import Enrollment from "../models/Enrollment";          // ← NEW: for emotion log
 import type { RawEmotion } from "../models/Enrollment"; // ← NEW: emotion types
 import {
@@ -229,7 +230,9 @@ async function awardPointsAndBadges(
       "streak.longest":    newStreakLongest,
       "streak.lastActiveDate": new Date(),
       lastActiveAt:        new Date(),
-      $push: newBadgeObjects.length ? { badges: { $each: newBadgeObjects } } : undefined,
+      ...(newBadgeObjects.length
+        ? { $push: { badges: { $each: newBadgeObjects } } }
+        : {}),
     }
   );
 
@@ -564,7 +567,21 @@ export const getChallengeSubmissions = async (req: Request, res: Response) => {
     if (!requireTeacher(req, res)) return;
     const { challengeId, roomId } = req.params;
 
-    const submissions = await Submission.find({ challengeId, roomId })
+    // Keep only the latest attempt per student (resubmissions replace earlier ones)
+    const latest = await Submission.aggregate([
+      {
+        $match: {
+          challengeId: new mongoose.Types.ObjectId(challengeId),
+          roomId:      new mongoose.Types.ObjectId(roomId),
+        },
+      },
+      { $sort: { attemptNumber: -1, submittedAt: -1 } },
+      { $group: { _id: "$studentId", latestId: { $first: "$_id" } } },
+    ]);
+
+    const latestIds = latest.map((l) => l.latestId);
+
+    const submissions = await Submission.find({ _id: { $in: latestIds } })
       .populate("studentId", "fullName email")
       .sort({ submittedAt: -1 });
 
@@ -615,7 +632,18 @@ export const gradeSubmission = async (req: Request, res: Response) => {
         angryToHappyRecoveries: emotionStats.angryToHappyRecoveries,
       }
     );
+    // ── Notify the student that their submission was graded ───
+    await Notification.create({
+      userId:   submission.studentId,
+      title:    "📝 Your submission was graded",
+      message:  challenge
+        ? `Your submission for "${challenge.title}" was graded: ${submission.score}/${challenge.totalPoints}` +
+          (submission.feedback ? ` — "${submission.feedback}"` : "")
+        : `Your submission was graded: ${submission.score} points.`,
+      courseId: submission.roomId as any,
+    });
 
+    res.json(submission);
     res.json(submission);
   } catch (err) {
     res.status(500).json({ message: "Server error" });

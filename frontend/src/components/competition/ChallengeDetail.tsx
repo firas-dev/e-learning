@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   ArrowLeft, Send, Lightbulb, Trophy, MessageSquare,
   Loader2, CheckCircle, Clock, AlertCircle,
-  ChevronDown, ChevronUp, Upload, X, Eye,
+  ChevronDown, ChevronUp, Upload, X, Eye,Paperclip, Download
 } from "lucide-react";
 import { useCompetition, IChallenge, ISubmission, IThread } from "../../hooks/useCompetition";
 import CountdownTimer from "./CountdownTimer";
@@ -23,6 +23,8 @@ const DIFFICULTY_COLOR = {
   medium: "bg-amber-100 text-amber-700 border-amber-200",
   hard:   "bg-red-100 text-red-700 border-red-200",
 };
+const toDownloadUrl = (url: string) =>
+  url.includes("/upload/") ? url.replace("/upload/", "/upload/fl_attachment/") : url;
 
 export default function ChallengeDetail({
   roomId, challengeId, currentUserId, currentUserName, isTeacher, onBack,
@@ -475,13 +477,18 @@ export default function ChallengeDetail({
               {submissions.map((sub: any) => (
                 <div key={sub._id} className="border border-gray-200 rounded-xl p-4">
                   <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                  <div className="flex items-center gap-2">
                     <p className="font-semibold text-gray-800 text-sm">{sub.studentId?.fullName}</p>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      sub.status === "graded" ? "bg-green-100 text-green-700" :
-                      sub.status === "auto_graded" ? "bg-blue-100 text-blue-700" :
-                      "bg-amber-100 text-amber-700"
-                    }`}>{sub.status.replace("_"," ")}</span>
+                    <span className="text-xs bg-gray-100 text-gray-500 font-medium px-2 py-0.5 rounded-full">
+                      Submission #{sub.attemptNumber}
+                    </span>
                   </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    sub.status === "graded" ? "bg-green-100 text-green-700" :
+                    sub.status === "auto_graded" ? "bg-blue-100 text-blue-700" :
+                    "bg-amber-100 text-amber-700"
+                  }`}>{sub.status.replace("_"," ")}</span>
+                </div>
                   {sub.answers?.map((a: any, i: number) => (
                     <div key={i} className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2 mb-1">
                       <span className="font-medium">Answer {i+1}:</span> {a.answer || "(file)"}
@@ -492,6 +499,38 @@ export default function ChallengeDetail({
                       )}
                     </div>
                   ))}
+                  {/* Attached files */}
+                  {sub.attachments?.length > 0 && (
+                    <div className="mt-2 space-y-1.5">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Attachments</p>
+                      {sub.attachments.map((att: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between gap-2 bg-gray-50 rounded-lg px-3 py-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Paperclip className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                            <span className="text-sm text-gray-700 truncate">{att.originalName}</span>
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <a href={att.url} target="_blank" rel="noopener noreferrer"
+                              className="text-xs font-medium text-violet-600 hover:text-violet-700 px-2 py-1">
+                              Open
+                            </a>
+                            <a href={toDownloadUrl(att.url)}
+                              className="flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-800 px-2 py-1">
+                              <Download className="w-3.5 h-3.5" /> Download
+                            </a>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Score + feedback once graded */}
+                  {sub.status !== "pending" && (
+                    <div className="mt-2 text-sm text-gray-600">
+                      <span className="font-medium">Score:</span> {sub.score}/{challenge.totalPoints}
+                      {sub.feedback && <p className="text-xs text-gray-500 mt-1">Feedback: {sub.feedback}</p>}
+                    </div>
+                  )}
                   {sub.status === "pending" && (
                     gradingId === sub._id ? (
                       <div className="mt-3 space-y-2">
