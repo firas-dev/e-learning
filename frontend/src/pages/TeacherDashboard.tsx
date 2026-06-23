@@ -6,8 +6,10 @@ import { useNavigation } from '../contexts/NavigationContext';
 import {
   TrendingUp, Users, Video, AlertCircle,
   Download, Calendar, Clock, Brain, Plus, X, Trash2,
-  Search, ChevronLeft, ChevronRight,
+  Search, ChevronLeft, ChevronRight, Lock , 
+  Loader2, Lightbulb, AlertTriangle, Sparkles, BookOpen, Smile,
 } from 'lucide-react';
+import { useTeacherEmotionAnalytics } from '../hooks/useTeacherEmotionAnalytics';
 
 interface TeacherDashboardProps {
   onOpenCourse: (id: string, title: string, type: 'live' | 'recorded') => void;
@@ -24,6 +26,13 @@ function formatHours(totalHours: number): string {
   return `${h}h${m.toString().padStart(2, '0')}m`;
 }
 
+const SIGNAL_META: Record<'positive' | 'neutral' | 'struggling' | 'disengaged', { label: string; color: string }> = {
+  positive:   { label: 'Engaged',    color: '#3B9122' },
+  neutral:    { label: 'Following',  color: '#9CA3AF' },
+  struggling: { label: 'Struggling', color: '#3B82F6' },
+  disengaged: { label: 'Disengaged', color: '#E24B4A' },
+};
+
 export default function TeacherDashboard({ onOpenCourse }: TeacherDashboardProps) {
   const { user } = useAuth();
   const {
@@ -36,7 +45,8 @@ export default function TeacherDashboard({ onOpenCourse }: TeacherDashboardProps
   } = useTeacherDashboard();
 
   const { courses, totalStudents, averageEngagement, totalPages } = data;
-
+  const { data: analytics, loading: analyticsLoading } = useTeacherEmotionAnalytics();
+  const [showRecommendations, setShowRecommendations] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const { setCurrentPage } = useNavigation();
   const [submitting, setSubmitting] = useState(false);
@@ -228,6 +238,71 @@ export default function TeacherDashboard({ onOpenCourse }: TeacherDashboardProps
         </div>
       )}
 
+      {/* AI Recommendations modal */}
+      {showRecommendations && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-blue-600" />
+                <h3 className="text-lg font-bold">AI Recommendations</h3>
+              </div>
+              <button onClick={() => setShowRecommendations(false)} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-3">
+              {analyticsLoading ? (
+                <div className="flex items-center justify-center py-10 text-gray-400">
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" /> Analyzing emotion data…
+                </div>
+              ) : !analytics?.recommendations.length ? (
+                <div className="text-center py-10">
+                  <Lightbulb className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                  <p className="text-sm text-gray-500">
+                    No recommendations right now. Once enough emotion data is collected,
+                    targeted suggestions will appear here.
+                  </p>
+                </div>
+              ) : (
+                analytics.recommendations.map((r) => {
+                  const sev =
+                    r.severity === 'high'
+                      ? { cls: 'border-red-200 bg-red-50', dot: 'bg-red-500', text: 'text-red-700' }
+                      : r.severity === 'medium'
+                      ? { cls: 'border-amber-200 bg-amber-50', dot: 'bg-amber-500', text: 'text-amber-700' }
+                      : { cls: 'border-green-200 bg-green-50', dot: 'bg-green-500', text: 'text-green-700' };
+                  return (
+                    <div key={r.id} className={`rounded-xl border p-4 ${sev.cls}`}>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className={`w-2 h-2 rounded-full ${sev.dot}`} />
+                        <span className={`text-[10px] font-bold uppercase tracking-wide ${sev.text}`}>
+                          {r.severity} priority
+                        </span>
+                      </div>
+                      <p className="font-semibold text-gray-900 text-sm mb-1">{r.title}</p>
+                      <p className="text-sm text-gray-600 leading-relaxed">{r.message}</p>
+                      {r.courseId && (
+                        <button
+                          onClick={() => {
+                            setShowRecommendations(false);
+                            onOpenCourse(r.courseId!, r.courseTitle || 'Course', r.courseType || 'recorded');
+                          }}
+                          className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+                        >
+                          <BookOpen className="w-3.5 h-3.5" /> Open course
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
@@ -261,8 +336,8 @@ export default function TeacherDashboard({ onOpenCourse }: TeacherDashboardProps
             <p className="text-sm text-gray-600">Avg Engagement</p>
           </div>
           <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-            <AlertCircle className="w-6 h-6 text-orange-600 mb-4" />
-            <p className="text-2xl font-bold">3</p>
+          <AlertCircle className="w-6 h-6 text-orange-600 mb-4" />
+            <p className="text-2xl font-bold">{analytics?.activeAlerts ?? 0}</p>
             <p className="text-sm text-gray-600">Active Alerts</p>
           </div>
         </div>
@@ -453,26 +528,146 @@ export default function TeacherDashboard({ onOpenCourse }: TeacherDashboardProps
               )}
             </div>
 
+            {/* Emotional Analytics */}
             <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-              <h2 className="text-xl font-bold mb-2">Emotional Analytics</h2>
-              <p className="text-gray-500 text-sm">Hook this later to analytics collection</p>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-xl font-bold">Emotional Analytics</h2>
+                  <p className="text-gray-500 text-sm">
+                    Aggregated from AI emotion detection across your courses
+                  </p>
+                </div>
+                <Brain className="w-6 h-6 text-blue-600" />
+              </div>
+
+              {analyticsLoading ? (
+                <div className="flex items-center justify-center py-10 text-gray-400">
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading analytics…
+                </div>
+              ) : !analytics?.hasData ? (
+                <div className="text-center py-10">
+                  <Smile className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                  <p className="text-sm text-gray-500">
+                    No emotion data yet. Analytics appear once enrolled students
+                    watch lessons with emotion detection enabled.
+                  </p>
+                </div>
+              ) : (
+                (() => {
+                  const sc = analytics.overview.signalCounts;
+                  const total = (Object.values(sc) as number[]).reduce((a, b) => a + b, 0) || 1;
+                  return (
+                    <>
+                      <div className="flex items-end gap-6 mb-5">
+                        <div>
+                          <p className="text-3xl font-bold text-gray-900">
+                            {analytics.overview.engagementScore}%
+                          </p>
+                          <p className="text-xs text-gray-500">Positive engagement</p>
+                        </div>
+                        <div className="text-sm text-gray-500 pb-1">
+                          <span className="font-medium text-gray-700">
+                            {analytics.overview.totalDetections.toLocaleString()}
+                          </span>{' '}detections ·{' '}
+                          <span className="font-medium text-gray-700">
+                            {analytics.overview.studentsTracked}
+                          </span>{' '}
+                          {analytics.overview.studentsTracked === 1 ? 'student' : 'students'}
+                        </div>
+                      </div>
+
+                      {/* Stacked signal bar */}
+                      <div className="flex h-3 w-full overflow-hidden rounded-full mb-3">
+                        {(Object.keys(SIGNAL_META) as (keyof typeof SIGNAL_META)[]).map((k) => {
+                          const pct = (sc[k] / total) * 100;
+                          return pct > 0 ? (
+                            <div
+                              key={k}
+                              style={{ width: `${pct}%`, backgroundColor: SIGNAL_META[k].color }}
+                              title={`${SIGNAL_META[k].label}: ${Math.round(pct)}%`}
+                            />
+                          ) : null;
+                        })}
+                      </div>
+
+                      {/* Legend */}
+                      <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
+                        {(Object.keys(SIGNAL_META) as (keyof typeof SIGNAL_META)[]).map((k) => (
+                          <div key={k} className="flex items-center gap-1.5">
+                            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: SIGNAL_META[k].color }} />
+                            <span className="text-gray-600">{SIGNAL_META[k].label}</span>
+                            <span className="text-gray-400">{Math.round((sc[k] / total) * 100)}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()
+              )}
             </div>
           </div>
 
           {/* Side panel */}
           <div className="space-y-6">
+            {/* Problematic Lessons */}
             <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
-              <h2 className="text-lg font-bold mb-4">Problematic Lessons</h2>
-              <p className="text-sm text-gray-500">Will come from analytics later</p>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold">Problematic Lessons</h2>
+                <AlertTriangle className="w-5 h-5 text-orange-500" />
+              </div>
+
+              {analyticsLoading ? (
+                <div className="flex items-center justify-center py-6 text-gray-400">
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading…
+                </div>
+              ) : !analytics?.problematicLessons.length ? (
+                <p className="text-sm text-gray-500">
+                  No problem lessons detected — students are coping well. 👍
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {analytics.problematicLessons.map((l) => {
+                    const issue =
+                      l.dominantIssue === 'frustration'
+                        ? { label: 'Frustration', cls: 'text-orange-700 bg-orange-100', bar: '#E8762E', pct: l.frustrationPct }
+                        : { label: 'Difficulty', cls: 'text-purple-700 bg-purple-100', bar: '#7F77DD', pct: l.difficultyPct };
+                    return (
+                      <button
+                        key={l.lessonId}
+                        onClick={() => l.courseId && onOpenCourse(l.courseId, l.courseTitle, l.courseType)}
+                        className="w-full text-left p-3 rounded-lg border border-gray-100 hover:border-gray-300 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-1.5">
+                          <p className="text-sm font-medium text-gray-900 line-clamp-1">{l.lessonTitle}</p>
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap ${issue.cls}`}>
+                            {issue.label} {issue.pct}%
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-400 line-clamp-1 mb-2">{l.courseTitle}</p>
+                        <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${Math.min(100, issue.pct)}%`, backgroundColor: issue.bar }} />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             <div className="bg-gradient-to-br from-blue-600 to-cyan-600 rounded-xl p-6 text-white">
               <h3 className="text-lg font-bold mb-4">Quick Actions</h3>
               <div className="space-y-2">
-                <button className="w-full flex items-center gap-2 p-3 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm font-medium">
-                  <Download className="w-4 h-4" /> Download Reports
-                </button>
-                <button className="w-full flex items-center gap-2 p-3 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm font-medium">
-                  <Brain className="w-4 h-4" /> AI Recommendations
+                <button
+                  onClick={() => setShowRecommendations(true)}
+                  className="w-full flex items-center justify-between gap-2 p-3 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm font-medium"
+                >
+                  <span className="flex items-center gap-2">
+                    <Brain className="w-4 h-4" /> AI Recommendations
+                  </span>
+                  {!!analytics?.recommendations.length && (
+                    <span className="text-xs font-bold bg-white/30 rounded-full px-2 py-0.5">
+                      {analytics.recommendations.length}
+                    </span>
+                  )}
                 </button>
                 <button
                   onClick={() => setShowModal(true)}
@@ -481,9 +676,10 @@ export default function TeacherDashboard({ onOpenCourse }: TeacherDashboardProps
                   <Calendar className="w-4 h-4" /> Schedule Session
                 </button>
                 <button
+                  
                   onClick={() => setCurrentPage('private-rooms')}
                   className="w-full flex items-center gap-2 p-3 bg-white/20 hover:bg-white/30 rounded-lg transition-colors text-sm font-medium"
-                >Private Rooms
+                ><Lock className="w-4 h-4" />Private Rooms
                 </button>
               </div>
             </div>

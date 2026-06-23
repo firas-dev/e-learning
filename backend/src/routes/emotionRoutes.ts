@@ -9,9 +9,16 @@ import {
   logEmotions,
   getEmotionSummary,
   getLessonHeatmap,
+  getTeacherEmotionAnalytics,
 } from "../controllers/emotionController";
 
 const router = express.Router();
+
+const teacherOnly = (req: any, res: any, next: any) => {
+  if (req.user?.role !== "teacher")
+    return res.status(403).json({ message: "Teacher access required." });
+  next();
+};
 
 // ── Student ───────────────────────────────────────────────────────────────────
 // Flush emotion log from frontend (called by useEmotionDetection every 30s)
@@ -35,5 +42,7 @@ router.get(
   protect,
   getLessonHeatmap
 );
+router.get("/teacher/emotion-analytics", protect, teacherOnly, getTeacherEmotionAnalytics);
+
 
 export default router;

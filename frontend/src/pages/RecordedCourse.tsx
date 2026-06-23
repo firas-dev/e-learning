@@ -108,6 +108,7 @@ export default function RecordedCourse({
     lessonId: currentLesson?._id ?? null,
     cameraEnabled,
     videoRef: cameraVideoRef,
+    predictEmotion,
     // ── Plug your model here ───────────────────────────────────────────────
     // The function receives the hidden <video> element that mirrors the
     // student's camera stream. Return one of the 6 RawEmotion strings.
@@ -125,9 +126,6 @@ export default function RecordedCourse({
     //     const res    = await axios.post('/predict', { frame });
     //     return res.data.emotion as RawEmotion;
     //   }
-    predictEmotion: async (_videoEl) => {
-      return 'neutral' as RawEmotion; // ← replace with real model call
-    },
   });
 
   // ── Camera stream management ──────────────────────────────────────────────

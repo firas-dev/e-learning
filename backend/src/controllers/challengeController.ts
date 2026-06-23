@@ -658,7 +658,13 @@ export const getRoomLeaderboard = async (req: Request, res: Response) => {
     if (!(await ensureRoomMembership(req, res))) return;
     const { roomId } = req.params;
 
-    const entries = await RoomStudent.find({ roomId })
+    // Leaderboard is students only — never include the room's teacher
+    const room = await PrivateRoom.findById(roomId).select("teacherId");
+
+    const entries = await RoomStudent.find({
+      roomId,
+      ...(room ? { studentId: { $ne: room.teacherId } } : {}),
+    })
       .populate("studentId", "fullName email")
       .sort({ totalPoints: -1, challengesCompleted: -1 })
       .limit(100);
@@ -706,7 +712,7 @@ export const getChallengeLeaderboard = async (req: Request, res: Response) => {
       { $sort: { "best.totalScore": -1, "best.submittedAt": 1 } },
     ]);
 
-    await Submission.populate(raw, { path: "best.studentId", select: "fullName" });
+    await Submission.populate(raw, { path: "best.studentId", select: "fullName", model: "User" });
 
     const leaderboard = raw.map((s, i) => ({
       rank:             i + 1,
@@ -731,10 +737,15 @@ export const getMyRoomStats = async (req: Request, res: Response) => {
   try {
     if (!(await ensureRoomMembership(req, res))) return;
     const { roomId } = req.params;
-    const studentId = (req as any).user.id;
+    const userId = (req as any).user.id;
+    const role   = (req as any).user.role;
 
-    let rs = await RoomStudent.findOne({ studentId, roomId });
-    if (!rs) rs = await RoomStudent.create({ studentId, roomId });
+    if (role !== "student") {
+      return res.json(null);
+    }
+
+    let rs = await RoomStudent.findOne({ studentId: userId, roomId });
+    if (!rs) rs = await RoomStudent.create({ studentId: userId, roomId });
 
     const rank = (await RoomStudent.countDocuments({
       roomId,
